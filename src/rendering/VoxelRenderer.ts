@@ -131,6 +131,8 @@ export class VoxelRenderer {
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 0.5;
     this.sunLight.shadow.camera.far = 500;
+    this.sunLight.shadow.bias = -0.0008;
+    this.sunLight.shadow.normalBias = 0.025;
     const d = 100;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
