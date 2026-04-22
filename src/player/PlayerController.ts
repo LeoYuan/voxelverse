@@ -102,24 +102,37 @@ export class PlayerController {
   private setupArmMesh() {
     const group = new THREE.Group();
 
-    // Arm
-    const armGeo = new THREE.BoxGeometry(0.06, 0.28, 0.06);
-    const armMat = new THREE.MeshBasicMaterial({ color: 0xd2a679 });
+    // Arm (handle)
+    const armGeo = new THREE.BoxGeometry(0.05, 0.25, 0.05);
+    const armMat = new THREE.MeshBasicMaterial({ color: 0x8B4513 }); // Brown handle
     const arm = new THREE.Mesh(armGeo, armMat);
-    arm.position.set(0, -0.14, 0);
+    arm.position.set(0, -0.12, 0);
     group.add(arm);
 
-    // Hand/tool head
-    const toolGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-    const toolMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
-    const tool = new THREE.Mesh(toolGeo, toolMat);
-    tool.position.set(0, -0.32, 0.02);
-    group.add(tool);
+    // Hammer head - larger and more prominent
+    const headGeo = new THREE.BoxGeometry(0.15, 0.08, 0.08);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x444444 }); // Dark gray metal
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.set(0, -0.28, 0);
+    group.add(head);
+
+    // Add a lighter stripe on hammer face
+    const faceGeo = new THREE.BoxGeometry(0.16, 0.06, 0.02);
+    const faceMat = new THREE.MeshBasicMaterial({ color: 0x666666 });
+    const faceTop = new THREE.Mesh(faceGeo, faceMat);
+    faceTop.position.set(0, -0.28, 0.04);
+    group.add(faceTop);
+
+    const faceBottom = new THREE.Mesh(faceGeo, faceMat);
+    faceBottom.position.set(0, -0.28, -0.04);
+    group.add(faceBottom);
 
     this.armMesh = group as unknown as THREE.Mesh;
     this.armMesh.visible = false;
     this.camera.add(this.armMesh);
-    this.armMesh.position.set(0.35, -0.35, -0.5);
+    this.armMesh.position.set(0.3, -0.35, -0.45);
+    // Initial rotation: hammer pointing forward
+    this.armMesh.rotation.set(-0.5, 0.1, 0);
   }
 
   private setupInput() {
@@ -221,7 +234,9 @@ export class PlayerController {
 
   private lastClickTime = 0;
   private lastClickButton = -1;
-  private clickDebounceMs = 100; // Debounce time for touchpad clicks
+  private clickDebounceMs = 150; // Debounce time for touchpad clicks
+  private lastPlaceTime = 0;
+  private placeCooldownMs = 200; // Minimum time between placements
 
   private onMouseDown(e: MouseEvent) {
     if (!this.isPointerLocked) return;
@@ -253,6 +268,13 @@ export class PlayerController {
         this.breakBlock();
       }
     } else if (effectiveButton === 2) {
+      // Additional debounce for placement
+      const timeSinceLastPlace = now - this.lastPlaceTime;
+      if (timeSinceLastPlace < this.placeCooldownMs) {
+        return;
+      }
+      this.lastPlaceTime = now;
+
       const hit = this.getRaycastResult();
       if (hit) {
         const blockId = this.chunkManager.getBlock(hit.pos.x, hit.pos.y, hit.pos.z);
@@ -265,6 +287,7 @@ export class PlayerController {
       this.isPlacing = true;
       this.placeCooldown = this.PLACE_INTERVAL;
       this.placeBlock();
+      this.triggerArmSwing(); // Also show hammer animation when placing
     }
   }
 
@@ -801,16 +824,30 @@ export class PlayerController {
   private updateArmSwing(dt: number) {
     if (!this.isArmSwinging || !this.armMesh) return;
 
-    this.armSwingProgress += dt * 12; // swing speed
+    this.armSwingProgress += dt * 10; // swing speed
 
-    // Swing animation: rotate arm forward and back
-    const swingAngle = Math.sin(this.armSwingProgress * Math.PI) * 1.2;
+    // Hammer swing animation: swing down and up
+    // Start from raised position (-1.5), swing down to hitting position (0.5)
+    const t = this.armSwingProgress;
+    let swingAngle;
+    if (t < 0.5) {
+      // Swing down: from raised to hit
+      swingAngle = -1.5 + t * 4; // -1.5 -> 0.5
+    } else {
+      // Swing back up
+      swingAngle = 0.5 - (t - 0.5) * 2; // 0.5 -> -0.5
+    }
     this.armMesh.rotation.x = swingAngle;
 
     if (this.armSwingProgress >= 1) {
       this.isArmSwinging = false;
-      this.armMesh.visible = false;
-      this.armMesh.rotation.x = 0;
+      // Keep hammer visible briefly after swing
+      setTimeout(() => {
+        if (this.armMesh && !this.isArmSwinging) {
+          this.armMesh.visible = false;
+          this.armMesh.rotation.x = -0.5;
+        }
+      }, 200);
     }
   }
 
