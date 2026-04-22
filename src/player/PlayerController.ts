@@ -287,7 +287,6 @@ export class PlayerController {
       this.isPlacing = true;
       this.placeCooldown = this.PLACE_INTERVAL;
       this.placeBlock();
-      this.triggerArmSwing(); // Also show hammer animation when placing
     }
   }
 
@@ -824,30 +823,26 @@ export class PlayerController {
   private updateArmSwing(dt: number) {
     if (!this.isArmSwinging || !this.armMesh) return;
 
-    this.armSwingProgress += dt * 10; // swing speed
+    this.armSwingProgress += dt * 8; // swing speed
 
     // Hammer swing animation: swing down and up
     // Start from raised position (-1.5), swing down to hitting position (0.5)
-    const t = this.armSwingProgress;
+    const t = Math.min(this.armSwingProgress, 1);
     let swingAngle;
-    if (t < 0.5) {
+    if (t < 0.4) {
       // Swing down: from raised to hit
-      swingAngle = -1.5 + t * 4; // -1.5 -> 0.5
+      swingAngle = -1.5 + t * 5; // -1.5 -> 0.5 at t=0.4
     } else {
-      // Swing back up
-      swingAngle = 0.5 - (t - 0.5) * 2; // 0.5 -> -0.5
+      // Swing back up and settle
+      const tt = (t - 0.4) / 0.6; // 0 -> 1
+      swingAngle = 0.5 - tt * 2; // 0.5 -> -1.5
     }
     this.armMesh.rotation.x = swingAngle;
 
     if (this.armSwingProgress >= 1) {
       this.isArmSwinging = false;
-      // Keep hammer visible briefly after swing
-      setTimeout(() => {
-        if (this.armMesh && !this.isArmSwinging) {
-          this.armMesh.visible = false;
-          this.armMesh.rotation.x = -0.5;
-        }
-      }, 200);
+      this.armMesh.visible = false;
+      this.armMesh.rotation.x = -0.5; // Reset to initial position
     }
   }
 
