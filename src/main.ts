@@ -599,22 +599,41 @@ function showStartMenu() {
       <div class="start-body">
         <div class="start-tabs">
           <div class="start-tab active" data-tab="mode">开始游戏</div>
-          <div class="start-tab" data-tab="levels">闯关模式</div>
           <div class="start-tab" data-tab="settings">设置</div>
           <div class="start-tab" data-tab="guide">游戏说明</div>
         </div>
 
         <div class="start-panel active" data-panel="mode">
           <div class="mode-cards">
-            <div class="mode-card selected" data-mode="tutorial">
-              <div class="mode-icon">🎓</div>
-              <h3>新手教程</h3>
-              <p>跟随引导关卡学习基础建造技巧</p>
-            </div>
-            <div class="mode-card" data-mode="challenge">
+            <div class="mode-card selected" data-mode="challenge">
               <div class="mode-icon">🏆</div>
               <h3>闯关模式</h3>
-              <p>20关进阶挑战，支持选择关卡</p>
+              <p>20关进阶挑战，难度递增</p>
+              <div class="level-select-row">
+                <label>起始关卡：</label>
+                <select id="level-select">
+                  <option value="0">1 - 第一块方块</option>
+                  <option value="1">2 - 小小高塔</option>
+                  <option value="2">3 - 小平台</option>
+                  <option value="3">4 - 小房子</option>
+                  <option value="4">5 - 更高的塔</option>
+                  <option value="5">6 - 大平台</option>
+                  <option value="6">7 - 石头房子</option>
+                  <option value="7">8 - 双层小楼</option>
+                  <option value="8">9 - 围栏</option>
+                  <option value="9">10 - 桥梁</option>
+                  <option value="10">11 - 长廊</option>
+                  <option value="11">12 - 观景台</option>
+                  <option value="12">13 - 窗户房子</option>
+                  <option value="13">14 - 城堡一角</option>
+                  <option value="14">15 - 隧道</option>
+                  <option value="15">16 - 地下室</option>
+                  <option value="16">17 - 水池</option>
+                  <option value="17">18 - 阶梯建筑</option>
+                  <option value="18">19 - 复合结构</option>
+                  <option value="19">20 - 自由创作</option>
+                </select>
+              </div>
             </div>
             <div class="mode-card" data-mode="creative">
               <div class="mode-icon">🏗️</div>
@@ -694,32 +713,6 @@ function showStartMenu() {
             </div>
           </div>
         </div>
-
-        <div class="start-panel" data-panel="levels">
-          <div class="level-list">
-            <div class="level-item" data-level="0"><div class="level-num">1</div><div class="level-info"><div class="level-title">第一块方块</div><div class="level-desc">放置任意1个方块</div></div></div>
-            <div class="level-item" data-level="1"><div class="level-num">2</div><div class="level-info"><div class="level-title">小小高塔</div><div class="level-desc">堆叠3个方块成一列</div></div></div>
-            <div class="level-item" data-level="2"><div class="level-num">3</div><div class="level-info"><div class="level-title">小平台</div><div class="level-desc">建造3x3的平台</div></div></div>
-            <div class="level-item" data-level="3"><div class="level-num">4</div><div class="level-info"><div class="level-title">小房子</div><div class="level-desc">有地板和墙的空间</div></div></div>
-            <div class="level-item" data-level="4"><div class="level-num">5</div><div class="level-info"><div class="level-title">更高的塔</div><div class="level-desc">堆叠5个方块成塔</div></div></div>
-            <div class="level-item" data-level="5"><div class="level-num">6</div><div class="level-info"><div class="level-title">大平台</div><div class="level-desc">建造5x5的平台</div></div></div>
-            <div class="level-item" data-level="6"><div class="level-num">7</div><div class="level-info"><div class="level-title">石头房子</div><div class="level-desc">用不同材料建房子</div></div></div>
-            <div class="level-item" data-level="7"><div class="level-num">8</div><div class="level-info"><div class="level-title">双层小楼</div><div class="level-desc">建造两层楼的房子</div></div></div>
-            <div class="level-item" data-level="8"><div class="level-num">9</div><div class="level-info"><div class="level-title">围栏</div><div class="level-desc">建造一条6格长的围栏</div></div></div>
-            <div class="level-item" data-level="9"><div class="level-num">10</div><div class="level-info"><div class="level-title">桥梁</div><div class="level-desc">建造一座6格长的桥</div></div></div>
-            <div class="level-item" data-level="10"><div class="level-num">11</div><div class="level-info"><div class="level-title">长廊</div><div class="level-desc">建造一条8格长的走廊</div></div></div>
-            <div class="level-item" data-level="11"><div class="level-num">12</div><div class="level-info"><div class="level-title">观景台</div><div class="level-desc">在高处建造平台</div></div></div>
-            <div class="level-item" data-level="12"><div class="level-num">13</div><div class="level-info"><div class="level-title">窗户房子</div><div class="level-desc">建造带窗户的房子</div></div></div>
-            <div class="level-item" data-level="13"><div class="level-num">14</div><div class="level-info"><div class="level-title">城堡一角</div><div class="level-desc">建造城堡的一个角落</div></div></div>
-            <div class="level-item" data-level="14"><div class="level-num">15</div><div class="level-info"><div class="level-title">隧道</div><div class="level-desc">挖掘一条5格长的隧道</div></div></div>
-            <div class="level-item" data-level="15"><div class="level-num">16</div><div class="level-info"><div class="level-title">地下室</div><div class="level-desc">挖掘一个地下室空间</div></div></div>
-            <div class="level-item" data-level="16"><div class="level-num">17</div><div class="level-info"><div class="level-title">水池</div><div class="level-desc">建造一个有边框的水池</div></div></div>
-            <div class="level-item" data-level="17"><div class="level-num">18</div><div class="level-info"><div class="level-title">阶梯建筑</div><div class="level-desc">建造带有阶梯的建筑</div></div></div>
-            <div class="level-item" data-level="18"><div class="level-num">19</div><div class="level-info"><div class="level-title">复合结构</div><div class="level-desc">建造多个相连的建筑</div></div></div>
-            <div class="level-item" data-level="19"><div class="level-num">20</div><div class="level-info"><div class="level-title">自由创作</div><div class="level-desc">建造你的梦想建筑</div></div></div>
-          </div>
-          <p style="font-size:12px;color:#888;margin-top:12px;">点击关卡选择起始关卡，完成关卡解锁下一关</p>
-        </div>
       </div>
       <div class="start-footer">
         <button class="btn-start" id="btn-start-game">开始游戏</button>
@@ -729,7 +722,7 @@ function showStartMenu() {
   container.appendChild(startMenu);
 
   // State
-  let selectedMode = 'tutorial';
+  let selectedMode = 'challenge';
   let selectedStartLevel = 0;
 
   // Tab switching
@@ -753,19 +746,13 @@ function showStartMenu() {
     });
   });
 
-  // Level selection
-  menu.querySelectorAll('.level-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const lvl = parseInt((item as HTMLElement).dataset.level || '0');
-      menu.querySelectorAll('.level-item').forEach(i => i.classList.remove('completed'));
-      item.classList.add('completed');
-      selectedStartLevel = lvl;
-      // Switch to challenge mode when selecting a level
-      selectedMode = 'challenge';
-      menu.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
-      menu.querySelector('.mode-card[data-mode="challenge"]')?.classList.add('selected');
+  // Level selection dropdown (for challenge mode)
+  const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
+  if (levelSelect) {
+    levelSelect.addEventListener('change', () => {
+      selectedStartLevel = parseInt(levelSelect.value);
     });
-  });
+  }
 
   // Start button
   menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
@@ -781,7 +768,7 @@ function showStartMenu() {
       player.survivalMode = true;
       giveStarterKit();
       levelManager.skip();
-    } else if (selectedMode === 'tutorial' || selectedMode === 'challenge') {
+    } else if (selectedMode === 'challenge') {
       player.survivalMode = false;
       levelManager.currentLevel = selectedStartLevel;
       levelManager.skipped = false;
