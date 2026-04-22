@@ -7,15 +7,59 @@ export interface LevelProgress {
   label: string;
 }
 
+// Target block position for preview
+export interface TargetBlock {
+  x: number;  // relative offset from preview center
+  y: number;
+  z: number;
+  color: number;  // hex color for preview
+}
+
 export interface LevelGoal {
   title: string;
   description: string;
   hint: string;
   checkComplete: (cm: ChunkManager, playerPos: Vec3) => boolean;
   getProgress?: (cm: ChunkManager, playerPos: Vec3) => LevelProgress[];
+  targetBlocks?: TargetBlock[];  // optional: blocks to show as preview
 }
 
 // Helper functions for level checking
+
+function block(x: number, y: number, z: number, color: number): TargetBlock {
+  return { x, y, z, color };
+}
+
+function pillarPreview(height: number, color: number): TargetBlock[] {
+  const blocks: TargetBlock[] = [];
+  for (let y = 0; y < height; y++) {
+    blocks.push(block(0, y, 0, color));
+  }
+  return blocks;
+}
+
+function platformPreview(size: number, color: number): TargetBlock[] {
+  const blocks: TargetBlock[] = [];
+  const offset = Math.floor(size / 2);
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      blocks.push(block(x - offset, 0, z - offset, color));
+    }
+  }
+  return blocks;
+}
+
+function housePreview(): TargetBlock[] {
+  const blocks = platformPreview(3, 0xb8864b);
+  const wallColor = 0xd7c7a4;
+  for (let x = -1; x <= 1; x++) {
+    for (let z = -1; z <= 1; z++) {
+      if (x === 0 && z === 0) continue;
+      blocks.push(block(x, 1, z, wallColor));
+    }
+  }
+  return blocks;
+}
 
 function countPlayerPlacedBlocks(cm: ChunkManager, px: number, py: number, pz: number, radius: number): number {
   let count = 0;
@@ -342,6 +386,9 @@ export const LEVELS: LevelGoal[] = [
     title: '第一块方块',
     description: '放置任意1个方块',
     hint: '右键点击地面放置一个方块',
+    targetBlocks: [
+      block(0, 0, 0, 0x8a8a8a),
+    ],
     checkComplete: (cm, playerPos) => {
       return countPlayerPlacedBlocks(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z), 5) >= 1;
     },
@@ -350,6 +397,7 @@ export const LEVELS: LevelGoal[] = [
     title: '小小高塔',
     description: '堆叠3个方块成一列',
     hint: '站在原地，按住右键往脚下连续放置方块',
+    targetBlocks: pillarPreview(3, 0x8a8a8a),
     checkComplete: (cm, playerPos) => {
       return hasPillar(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z), 3);
     },
@@ -358,6 +406,7 @@ export const LEVELS: LevelGoal[] = [
     title: '小平台',
     description: '建造3x3的平台',
     hint: '在地面上连续放置9个方块组成3x3平面',
+    targetBlocks: platformPreview(3, 0x9c6a3d),
     checkComplete: (cm, playerPos) => {
       return hasPlatform(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z), 3);
     },
@@ -366,6 +415,7 @@ export const LEVELS: LevelGoal[] = [
     title: '小房子',
     description: '建造一个简单的房子',
     hint: '铺一个3×3的地板，再在四周放几块围墙',
+    targetBlocks: housePreview(),
     checkComplete: (cm, playerPos) => {
       return hasSmallHouse(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z));
     },
@@ -383,6 +433,7 @@ export const LEVELS: LevelGoal[] = [
     title: '更高的塔',
     description: '堆叠5个方块成塔',
     hint: '继续向上堆叠方块，建造更高的塔',
+    targetBlocks: pillarPreview(5, 0x8a8a8a),
     checkComplete: (cm, playerPos) => {
       return hasPillar(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z), 5);
     },
@@ -391,6 +442,7 @@ export const LEVELS: LevelGoal[] = [
     title: '大平台',
     description: '建造5x5的平台',
     hint: '放置25个方块组成5x5平面',
+    targetBlocks: platformPreview(5, 0x9c6a3d),
     checkComplete: (cm, playerPos) => {
       return hasPlatform(cm, Math.floor(playerPos.x), Math.floor(playerPos.y), Math.floor(playerPos.z), 5);
     },

@@ -35,6 +35,13 @@ describe('LevelManager', () => {
     expect(lm.isComplete()).toBe(true);
     expect(lm.progress).toBe('已跳过');
   });
+
+  it('should expose target previews for early building levels', () => {
+    expect(LEVELS[0].targetBlocks).toEqual([{ x: 0, y: 0, z: 0, color: 0x8a8a8a }]);
+    expect(LEVELS[1].targetBlocks).toHaveLength(3);
+    expect(LEVELS[2].targetBlocks).toHaveLength(9);
+    expect(LEVELS[3].targetBlocks).toHaveLength(17);
+  });
 });
 
 describe('Level 1: 第一块方块', () => {

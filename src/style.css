@@ -571,10 +571,14 @@ canvas {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 12px;
   pointer-events: none;
+  padding: 10px 14px;
+  background: rgba(10, 14, 18, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
 }
 
 .level-title {
@@ -690,6 +694,31 @@ canvas {
   color: #fff;
   text-shadow: 0 0 2px rgba(0,0,0,0.9);
   white-space: nowrap;
+}
+
+.level-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.level-preview {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 52px;
+  margin-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  padding-left: 16px;
+}
+
+.level-preview-block {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
+  border-radius: 3px;
 }
 
 /* Enhanced Start Menu */

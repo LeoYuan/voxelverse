@@ -23,6 +23,7 @@ import { Creeper } from './entities/Creeper';
 import { Cow } from './entities/Cow';
 import { Crafting } from './crafting/CraftingRegistry';
 import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
+import { getLevelPreviewLayout } from './tutorial/levelPreview';
 import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
 import { getInitialSceneLayout } from './world/initialSceneLayout';
 import './style.css';
@@ -505,8 +506,11 @@ ui.innerHTML = `
     <p>点击下方标签选方块 → 点快捷栏格子切换 → 右键放置</p>
   </div>
   <div class="level-hud" id="level-hud">
-    <div class="level-title" id="level-title">第一块方块</div>
-    <div class="level-progress" id="level-progress">第 1 / 4 关</div>
+    <div class="level-copy">
+      <div class="level-title" id="level-title">第一块方块</div>
+      <div class="level-progress" id="level-progress">第 1 / 4 关</div>
+    </div>
+    <div class="level-preview" id="level-preview" style="display:none;"></div>
   </div>
   <div class="level-hint" id="level-hint">右键点击地面放置一个方块</div>
   <div class="level-progress-bars" id="level-progress-bars"></div>
@@ -766,10 +770,32 @@ const levelHud = document.getElementById('level-hud') as HTMLElement;
 const levelTitle = document.getElementById('level-title') as HTMLElement;
 const levelProgress = document.getElementById('level-progress') as HTMLElement;
 const levelHint = document.getElementById('level-hint') as HTMLElement;
+const levelPreview = document.getElementById('level-preview') as HTMLElement;
 const levelProgressBars = document.getElementById('level-progress-bars') as HTMLElement;
 const levelCompletePopup = document.getElementById('level-complete-popup') as HTMLElement;
 const levelCompleteText = document.getElementById('level-complete-text') as HTMLElement;
 const levelNextBtn = document.getElementById('level-next-btn') as HTMLElement;
+
+function renderLevelPreview() {
+  const targetBlocks = levelManager.current?.targetBlocks ?? [];
+  if (targetBlocks.length === 0) {
+    levelPreview.innerHTML = '';
+    levelPreview.style.display = 'none';
+    levelPreview.style.width = '';
+    levelPreview.style.height = '';
+    return;
+  }
+
+  const layout = getLevelPreviewLayout(targetBlocks);
+  levelPreview.innerHTML = layout.blocks
+    .map((block) => (
+      `<span class="level-preview-block" style="left:${block.left}px;top:${block.top}px;background:${block.color};z-index:${block.zIndex};"></span>`
+    ))
+    .join('');
+  levelPreview.style.width = `${layout.width}px`;
+  levelPreview.style.height = `${layout.height}px`;
+  levelPreview.style.display = 'block';
+}
 
 function updateLevelUI() {
   const level = levelManager.current;
@@ -778,11 +804,13 @@ function updateLevelUI() {
     levelHint.style.display = 'none';
     levelProgressBars.style.display = 'none';
     levelProgressBars.innerHTML = '';
+    levelPreview.innerHTML = '';
     return;
   }
   levelTitle.textContent = level.title;
   levelProgress.textContent = levelManager.progress;
   levelHint.textContent = level.hint;
+  renderLevelPreview();
   levelHud.style.display = 'flex';
   levelHint.style.display = 'block';
 }
