@@ -102,37 +102,37 @@ export class PlayerController {
   private setupArmMesh() {
     const group = new THREE.Group();
 
-    // Arm (handle)
-    const armGeo = new THREE.BoxGeometry(0.05, 0.25, 0.05);
+    // Arm (handle) - thicker and longer
+    const armGeo = new THREE.BoxGeometry(0.08, 0.35, 0.08);
     const armMat = new THREE.MeshBasicMaterial({ color: 0x8B4513 }); // Brown handle
     const arm = new THREE.Mesh(armGeo, armMat);
-    arm.position.set(0, -0.12, 0);
+    arm.position.set(0, -0.18, 0);
     group.add(arm);
 
     // Hammer head - larger and more prominent
-    const headGeo = new THREE.BoxGeometry(0.15, 0.08, 0.08);
-    const headMat = new THREE.MeshBasicMaterial({ color: 0x444444 }); // Dark gray metal
+    const headGeo = new THREE.BoxGeometry(0.2, 0.12, 0.12);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x555555 }); // Dark gray metal
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.set(0, -0.28, 0);
+    head.position.set(0, -0.38, 0);
     group.add(head);
 
-    // Add a lighter stripe on hammer face
-    const faceGeo = new THREE.BoxGeometry(0.16, 0.06, 0.02);
-    const faceMat = new THREE.MeshBasicMaterial({ color: 0x666666 });
+    // Add lighter stripes on hammer faces
+    const faceGeo = new THREE.BoxGeometry(0.21, 0.08, 0.03);
+    const faceMat = new THREE.MeshBasicMaterial({ color: 0x777777 });
     const faceTop = new THREE.Mesh(faceGeo, faceMat);
-    faceTop.position.set(0, -0.28, 0.04);
+    faceTop.position.set(0, -0.38, 0.06);
     group.add(faceTop);
 
     const faceBottom = new THREE.Mesh(faceGeo, faceMat);
-    faceBottom.position.set(0, -0.28, -0.04);
+    faceBottom.position.set(0, -0.38, -0.06);
     group.add(faceBottom);
 
     this.armMesh = group as unknown as THREE.Mesh;
     this.armMesh.visible = false;
     this.camera.add(this.armMesh);
-    this.armMesh.position.set(0.3, -0.35, -0.45);
-    // Initial rotation: hammer pointing forward
-    this.armMesh.rotation.set(-0.5, 0.1, 0);
+    this.armMesh.position.set(0.25, -0.3, -0.4);
+    // Initial rotation: hammer raised up
+    this.armMesh.rotation.set(-1.2, 0.15, 0);
   }
 
   private setupInput() {
@@ -817,32 +817,32 @@ export class PlayerController {
     if (!this.armMesh) return;
     this.isArmSwinging = true;
     this.armSwingProgress = 0;
+    // Reset to raised position before starting animation
+    this.armMesh.rotation.x = -1.2;
     this.armMesh.visible = true;
   }
 
   private updateArmSwing(dt: number) {
     if (!this.isArmSwinging || !this.armMesh) return;
 
-    this.armSwingProgress += dt * 8; // swing speed
+    this.armSwingProgress += dt * 5; // swing speed - slower for visibility
 
-    // Hammer swing animation: swing down and up
-    // Start from raised position (-1.5), swing down to hitting position (0.5)
+    // Hammer swing animation: swing down from raised position to hit, then back
     const t = Math.min(this.armSwingProgress, 1);
     let swingAngle;
-    if (t < 0.4) {
-      // Swing down: from raised to hit
-      swingAngle = -1.5 + t * 5; // -1.5 -> 0.5 at t=0.4
+    if (t < 0.3) {
+      // Quick swing down to hit
+      swingAngle = -1.2 + t * 6; // -1.2 -> 0.6 at t=0.3
     } else {
-      // Swing back up and settle
-      const tt = (t - 0.4) / 0.6; // 0 -> 1
-      swingAngle = 0.5 - tt * 2; // 0.5 -> -1.5
+      // Slow swing back up
+      const tt = (t - 0.3) / 0.7; // 0 -> 1
+      swingAngle = 0.6 - tt * 1.8; // 0.6 -> -1.2
     }
     this.armMesh.rotation.x = swingAngle;
 
     if (this.armSwingProgress >= 1) {
       this.isArmSwinging = false;
       this.armMesh.visible = false;
-      this.armMesh.rotation.x = -0.5; // Reset to initial position
     }
   }
 

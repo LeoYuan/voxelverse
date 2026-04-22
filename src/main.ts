@@ -313,19 +313,37 @@ function buildRedstoneDemo(baseX: number, baseZ: number) {
 }
 
 function buildVillagePaths() {
-  const pathPoints = [
-    [0, 0], [-2, 0], [-4, 0], [-8, -2], [-12, -5], [-15, -6],
-    [0, 0], [2, 0], [6, -3], [10, -7], [12, -9],
-    [0, 0], [0, 2], [0, 6], [-4, 10], [-8, 14],
-    [0, 0], [5, 0], [10, 2], [15, 8], [18, 11],
-    [0, 0], [0, 5], [2, 12], [5, 22],
+  // Build continuous paths connecting key locations
+  const connections = [
+    // Spawn to wooden house
+    { from: [0, 0], to: [-15, -8] },
+    // Spawn to brick house
+    { from: [0, 0], to: [12, -10] },
+    // Spawn to storage shed
+    { from: [0, 0], to: [-8, 15] },
+    // Spawn to stone tower
+    { from: [0, 0], to: [18, 12] },
+    // Spawn to farm plot
+    { from: [0, 0], to: [5, 25] },
   ];
 
-  for (const [px, pz] of pathPoints) {
-    const pathY = getGroundHeight(px, pz);
-    chunkManager.setBlock(px, pathY, pz, BLOCK_COBBLESTONE);
-    chunkManager.setBlock(px + 1, pathY, pz, BLOCK_COBBLESTONE);
-    chunkManager.setBlock(px, pathY, pz + 1, BLOCK_COBBLESTONE);
+  for (const { from, to } of connections) {
+    // Draw a continuous path between two points
+    const dx = to[0] - from[0];
+    const dz = to[1] - from[1];
+    const steps = Math.max(Math.abs(dx), Math.abs(dz));
+
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.floor(from[0] + (dx * i) / steps);
+      const z = Math.floor(from[1] + (dz * i) / steps);
+      const pathY = getGroundHeight(x, z);
+
+      // Place 2x2 path blocks for stability
+      chunkManager.setBlock(x, pathY, z, BLOCK_COBBLESTONE);
+      chunkManager.setBlock(x + 1, pathY, z, BLOCK_COBBLESTONE);
+      chunkManager.setBlock(x, pathY, z + 1, BLOCK_COBBLESTONE);
+      chunkManager.setBlock(x + 1, pathY, z + 1, BLOCK_COBBLESTONE);
+    }
   }
 }
 
