@@ -4,9 +4,19 @@ import { Chunk, CHUNK_SIZE, CHUNK_HEIGHT } from './Chunk';
 export class ChunkManager {
   private chunks = new Map<string, Chunk>();
   private generator: WorldGenerator;
+  /** Tracks coordinates of blocks placed by the player (not world-generated) */
+  private playerPlaced = new Set<string>();
 
   constructor(seed = 12345) {
     this.generator = new WorldGenerator(seed);
+  }
+
+  markPlayerPlaced(wx: number, wy: number, wz: number) {
+    this.playerPlaced.add(`${wx},${wy},${wz}`);
+  }
+
+  isPlayerPlaced(wx: number, wy: number, wz: number): boolean {
+    return this.playerPlaced.has(`${wx},${wy},${wz}`);
   }
 
   private key(cx: number, cz: number): string {

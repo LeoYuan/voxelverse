@@ -2,7 +2,7 @@ export const DAY_LENGTH = 20 * 60; // 20 minutes in seconds
 export const TICKS_PER_SECOND = 20;
 
 export class DayNightCycle {
-  public timeOfDay = 0; // 0 to DAY_LENGTH, 0 = sunrise, DAY_LENGTH/2 = sunset
+  public timeOfDay = DAY_LENGTH * 0.5; // Start at noon for first-time players
   public dayCount = 1;
 
   private paused = false;
@@ -30,10 +30,10 @@ export class DayNightCycle {
       return 1.0;
     } else if (t < 0.25) {
       // Dawn transition
-      return 0.2 + (t / 0.25) * 0.8;
+      return 0.45 + (t / 0.25) * 0.55;
     } else {
       // Dusk transition
-      return 0.2 + ((1 - t) / 0.25) * 0.8;
+      return 0.45 + ((1 - t) / 0.25) * 0.55;
     }
   }
 

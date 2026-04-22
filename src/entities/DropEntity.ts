@@ -42,16 +42,28 @@ export class DropEntity {
     // Apply gravity
     this.velocity.y -= GRAVITY * dt;
 
+    const r = DROP_SIZE / 2;
+    const checkSolid = (px: number, py: number, pz: number) => {
+      for (let cx = Math.floor(px - r); cx <= Math.floor(px + r); cx++) {
+        for (let cy = Math.floor(py - r); cy <= Math.floor(py + r); cy++) {
+          for (let cz = Math.floor(pz - r); cz <= Math.floor(pz + r); cz++) {
+            if (isSolid(cx, cy, cz)) return true;
+          }
+        }
+      }
+      return false;
+    };
+
     // Try move X
     this.position.x += this.velocity.x * dt;
-    if (isSolid(Math.floor(this.position.x), Math.floor(this.position.y), Math.floor(this.position.z))) {
+    if (checkSolid(this.position.x, this.position.y, this.position.z)) {
       this.position.x -= this.velocity.x * dt;
       this.velocity.x *= -0.3;
     }
 
     // Try move Y
     this.position.y += this.velocity.y * dt;
-    if (isSolid(Math.floor(this.position.x), Math.floor(this.position.y), Math.floor(this.position.z))) {
+    if (checkSolid(this.position.x, this.position.y, this.position.z)) {
       this.position.y -= this.velocity.y * dt;
       this.velocity.y *= -0.3;
       if (Math.abs(this.velocity.y) < 1) this.velocity.y = 0;
@@ -59,7 +71,7 @@ export class DropEntity {
 
     // Try move Z
     this.position.z += this.velocity.z * dt;
-    if (isSolid(Math.floor(this.position.x), Math.floor(this.position.y), Math.floor(this.position.z))) {
+    if (checkSolid(this.position.x, this.position.y, this.position.z)) {
       this.position.z -= this.velocity.z * dt;
       this.velocity.z *= -0.3;
     }

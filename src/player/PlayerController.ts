@@ -5,6 +5,7 @@ import { AABB } from '../utils/AABB';
 import { BlockRegistry } from '../blocks/BlockRegistry';
 import { DropEntity } from '../entities/DropEntity';
 import { VoxelRenderer } from '../rendering/VoxelRenderer';
+import { Inventory } from './Inventory';
 
 const PLAYER_HEIGHT = 1.8;
 const PLAYER_WIDTH = 0.6;
@@ -35,17 +36,32 @@ export class PlayerController {
   private fallDistance = 0;
   public pendingFallDamage = 0;
 
+  // Creative mode flight
+  public isFlying = false;
+  private lastSpacePressTime = 0;
+  private spaceTapCount = 0;
+
   // Mining state
   private miningTarget: Vec3 | null = null;
   private miningProgress = 0;
   private isMining = false;
 
+  // Placing state
+  private isPlacing = false;
+  private placeCooldown = 0;
+  private readonly PLACE_INTERVAL = 0.15;
+
+  // Arm swing animation
+  private armMesh: THREE.Mesh | null = null;
+  private armSwingProgress = 0;
+  private isArmSwinging = false;
+
   private chunkManager: ChunkManager;
   private voxelRenderer: VoxelRenderer;
   private onBlockChange: (x: number, y: number, z: number) => void;
   private onInteract: ((x: number, y: number, z: number, blockId: number) => void) | null = null;
-  private onPickupDrop: ((blockId: number) => void) | null = null;
-  private selectedBlock = 1;
+  private onPickupDrop: ((blockId: number) => boolean) | null = null;
+  public inventory: Inventory;
   private blockNameEl: HTMLElement;
 
   // Tool durability tracking
@@ -63,7 +79,7 @@ export class PlayerController {
     voxelRenderer: VoxelRenderer,
     onBlockChange: (x: number, y: number, z: number) => void,
     onInteract?: (x: number, y: number, z: number, blockId: number) => void,
-    onPickupDrop?: (blockId: number) => void
+    onPickupDrop?: (blockId: number) => boolean
   ) {
     this.camera = camera;
     this.chunkManager = chunkManager;
@@ -72,13 +88,38 @@ export class PlayerController {
     if (onInteract) this.onInteract = onInteract;
     if (onPickupDrop) this.onPickupDrop = onPickupDrop;
     this.position = new Vec3(0, 20, 0);
+    this.inventory = new Inventory();
 
     // Block name tooltip
     this.blockNameEl = document.createElement('div');
     this.blockNameEl.className = 'block-name';
     document.body.appendChild(this.blockNameEl);
 
+    this.setupArmMesh();
     this.setupInput();
+  }
+
+  private setupArmMesh() {
+    const group = new THREE.Group();
+
+    // Arm
+    const armGeo = new THREE.BoxGeometry(0.06, 0.28, 0.06);
+    const armMat = new THREE.MeshBasicMaterial({ color: 0xd2a679 });
+    const arm = new THREE.Mesh(armGeo, armMat);
+    arm.position.set(0, -0.14, 0);
+    group.add(arm);
+
+    // Hand/tool head
+    const toolGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+    const toolMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+    const tool = new THREE.Mesh(toolGeo, toolMat);
+    tool.position.set(0, -0.32, 0.02);
+    group.add(tool);
+
+    this.armMesh = group as unknown as THREE.Mesh;
+    this.armMesh.visible = false;
+    this.camera.add(this.armMesh);
+    this.armMesh.position.set(0.35, -0.35, -0.5);
   }
 
   private setupInput() {
@@ -89,10 +130,15 @@ export class PlayerController {
     document.addEventListener('mouseup', (e) => this.onMouseUp(e));
     document.addEventListener('pointerlockchange', () => {
       this.isPointerLocked = document.pointerLockElement === document.body;
+      const hint = document.getElementById('pointer-lock-hint');
+      if (hint) {
+        hint.style.display = this.isPointerLocked ? 'none' : 'block';
+      }
     });
 
-    document.body.addEventListener('click', () => {
-      if (!this.isPointerLocked) {
+    // Press Enter to enter pointer lock (instead of clicking)
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' && !this.isPointerLocked) {
         document.body.requestPointerLock();
       }
     });
@@ -105,32 +151,50 @@ export class PlayerController {
       case 'KeyS': this.moveBackward = true; break;
       case 'KeyA': this.moveLeft = true; break;
       case 'KeyD': this.moveRight = true; break;
-      case 'Space': this.moveUp = true; break;
+      case 'Space':
+        this.moveUp = true;
+        if (!this.survivalMode) {
+          const now = performance.now();
+          if (now - this.lastSpacePressTime < 300) {
+            this.spaceTapCount++;
+            if (this.spaceTapCount >= 2) {
+              this.isFlying = !this.isFlying;
+              this.spaceTapCount = 0;
+            }
+          } else {
+            this.spaceTapCount = 1;
+          }
+          this.lastSpacePressTime = now;
+        }
+        break;
       case 'ShiftLeft': this.moveDown = true; break;
-      case 'Digit1': this.selectedBlock = 1; break;
-      case 'Digit2': this.selectedBlock = 2; break;
-      case 'Digit3': this.selectedBlock = 3; break;
-      case 'Digit4': this.selectedBlock = 4; break;
-      case 'Digit5': this.selectedBlock = 5; break;
-      case 'Digit6': this.selectedBlock = 6; break;
-      case 'Digit7': this.selectedBlock = 7; break;
-      case 'Digit8': this.selectedBlock = 8; break;
-      case 'Digit9': this.selectedBlock = 9; break;
-      case 'Digit0': this.selectedBlock = 10; break;
+      case 'Digit1': this.setSlot(0); break;
+      case 'Digit2': this.setSlot(1); break;
+      case 'Digit3': this.setSlot(2); break;
+      case 'Digit4': this.setSlot(3); break;
+      case 'Digit5': this.setSlot(4); break;
+      case 'Digit6': this.setSlot(5); break;
+      case 'Digit7': this.setSlot(6); break;
+      case 'Digit8': this.setSlot(7); break;
+      case 'Digit9': this.setSlot(8); break;
       case 'KeyG': this.survivalMode = !this.survivalMode; break;
-      case 'KeyB': this.selectedBlock = 29; break;
-      case 'KeyN': this.selectedBlock = 32; break; // redstone dust
-      case 'KeyM': this.selectedBlock = 33; break; // redstone torch
-      case 'KeyT': this.selectedBlock = 34; break; // redstone lamp
-      case 'KeyY': this.selectedBlock = 36; break; // lever
-      case 'KeyU': this.selectedBlock = 37; break; // button
-      case 'KeyI': this.selectedBlock = 38; break; // redstone block
-      case 'KeyO': this.selectedBlock = 39; break; // repeater
-      case 'KeyZ': this.selectedBlock = 41; break; // wooden pickaxe
-      case 'KeyX': this.selectedBlock = 42; break; // stone pickaxe
-      case 'KeyC': this.selectedBlock = 43; break; // iron pickaxe
-      case 'KeyV': this.selectedBlock = 44; break; // diamond pickaxe
+      case 'KeyB': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 29; break;
+      case 'KeyN': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 32; break;
+      case 'KeyM': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 33; break;
+      case 'KeyT': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 34; break;
+      case 'KeyY': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 36; break;
+      case 'KeyU': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 37; break;
+      case 'KeyI': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 38; break;
+      case 'KeyO': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 39; break;
+      case 'KeyZ': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 41; break;
+      case 'KeyX': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 42; break;
+      case 'KeyC': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 43; break;
+      case 'KeyV': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 44; break;
     }
+  }
+
+  private setSlot(index: number) {
+    this.inventory.setSelectedSlot(index);
   }
 
   private onKeyUp(e: KeyboardEvent) {
@@ -147,7 +211,9 @@ export class PlayerController {
 
   private onMouseMove(e: MouseEvent) {
     if (!this.isPointerLocked) return;
-    const sensitivity = 0.002;
+    // Read sensitivity from localStorage (1-10 scale, default 5)
+    const sensSetting = parseFloat(localStorage.getItem('voxelverse-sensitivity') || '5');
+    const sensitivity = 0.001 + (sensSetting / 10) * 0.003; // Range: 0.001 to 0.004
     this.yaw -= e.movementX * sensitivity;
     this.pitch -= e.movementY * sensitivity;
     this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
@@ -157,6 +223,7 @@ export class PlayerController {
     if (!this.isPointerLocked) return;
     if (e.button === 0) {
       this.isMining = true;
+      this.triggerArmSwing();
       if (this.survivalMode) {
         this.startMining();
       } else {
@@ -173,6 +240,8 @@ export class PlayerController {
           return;
         }
       }
+      this.isPlacing = true;
+      this.placeCooldown = this.PLACE_INTERVAL;
       this.placeBlock();
     }
   }
@@ -182,6 +251,8 @@ export class PlayerController {
       this.isMining = false;
       this.miningTarget = null;
       this.miningProgress = 0;
+    } else if (e.button === 2) {
+      this.isPlacing = false;
     }
   }
 
@@ -230,7 +301,8 @@ export class PlayerController {
   }
 
   private getMiningSpeedMultiplier(blockKey: string): number {
-    const toolDef = BlockRegistry.getById(this.selectedBlock);
+    const selectedId = this.survivalMode ? this.inventory.getSelectedBlockId() : 1;
+    const toolDef = BlockRegistry.getById(selectedId);
     if (toolDef.key.endsWith('_pickaxe')) {
       const pickaxeTargets = ['stone', 'cobblestone', 'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'redstone_ore', 'furnace', 'crafting_table', 'chest'];
       if (pickaxeTargets.includes(blockKey)) {
@@ -244,16 +316,17 @@ export class PlayerController {
   }
 
   private applyToolDurability() {
-    const max = this.maxDurability[this.selectedBlock];
+    const selectedId = this.inventory.getSelectedBlockId();
+    const max = this.maxDurability[selectedId];
     if (!max) return;
-    const current = this.toolDurability.get(this.selectedBlock) ?? max;
+    const current = this.toolDurability.get(selectedId) ?? max;
     const next = current - 1;
     if (next <= 0) {
-      this.toolDurability.delete(this.selectedBlock);
-      this.selectedBlock = 1;
+      this.toolDurability.delete(selectedId);
+      this.inventory.clearSlot(this.inventory.selectedSlot);
       this.playSound('break');
     } else {
-      this.toolDurability.set(this.selectedBlock, next);
+      this.toolDurability.set(selectedId, next);
     }
   }
 
@@ -263,7 +336,8 @@ export class PlayerController {
     this.onBlockChange(x, y, z);
     this.playSound('break');
 
-    if (blockId !== 0) {
+    // No drops in creative mode
+    if (this.survivalMode && blockId !== 0) {
       const def = BlockRegistry.getById(blockId);
       if (def.drops && def.drops.length > 0) {
         for (const dropConfig of def.drops) {
@@ -296,18 +370,20 @@ export class PlayerController {
 
     const step = 0.1;
     const maxDist = 6;
-    let px = this.position.x;
-    let py = this.position.y + PLAYER_HEIGHT * 0.5;
-    let pz = this.position.z;
+    // Ray starts from camera position (matches crosshair)
+    const eyeY = this.position.y + PLAYER_HEIGHT * 0.9;
+    let px = this.camera.position.x;
+    let py = this.camera.position.y;
+    let pz = this.camera.position.z;
 
     let prevX = Math.floor(px);
     let prevY = Math.floor(py);
     let prevZ = Math.floor(pz);
 
-    for (let d = 0; d < maxDist; d += step) {
-      px = this.position.x + direction.x * d;
-      py = this.position.y + PLAYER_HEIGHT * 0.5 + direction.y * d;
-      pz = this.position.z + direction.z * d;
+    for (let d = step; d < maxDist; d += step) {
+      px = this.camera.position.x + direction.x * d;
+      py = this.camera.position.y + direction.y * d;
+      pz = this.camera.position.z + direction.z * d;
 
       const bx = Math.floor(px);
       const by = Math.floor(py);
@@ -326,7 +402,11 @@ export class PlayerController {
       }
     }
 
-    return null;
+    // No solid block hit - return the air block at max reach
+    return {
+      pos: new Vec3(prevX, prevY, prevZ),
+      normal: new Vec3(0, 0, 0),
+    };
   }
 
   private breakBlock() {
@@ -338,21 +418,50 @@ export class PlayerController {
 
   private placeBlock() {
     const hit = this.getRaycastResult();
-    if (hit) {
-      const nx = hit.pos.x + hit.normal.x;
-      const ny = hit.pos.y + hit.normal.y;
-      const nz = hit.pos.z + hit.normal.z;
+    if (!hit) return;
 
-      // Prevent placing non-placeable items (food, tools)
-      const placeDef = BlockRegistry.getById(this.selectedBlock);
-      if (!placeDef.solid && !this.isPlaceableItem(placeDef.key)) return;
+    let nx: number, ny: number, nz: number;
 
-      const playerAABB = this.getPlayerAABB();
-      const blockAABB = AABB.fromBlock(nx, ny, nz);
-      if (!playerAABB.intersects(blockAABB)) {
-        this.chunkManager.setBlock(nx, ny, nz, this.selectedBlock);
-        this.onBlockChange(nx, ny, nz);
-        this.playSound('place');
+    if (hit.normal.x === 0 && hit.normal.y === 0 && hit.normal.z === 0) {
+      // Air place - place directly at the raycast end position
+      nx = hit.pos.x;
+      ny = hit.pos.y;
+      nz = hit.pos.z;
+    } else {
+      // Block hit - place adjacent to the hit face
+      nx = hit.pos.x + hit.normal.x;
+      ny = hit.pos.y + hit.normal.y;
+      nz = hit.pos.z + hit.normal.z;
+    }
+
+    const selectedId = this.inventory.getSelectedBlockId();
+
+    // Prevent placing non-placeable items (food, tools)
+    const placeDef = BlockRegistry.getById(selectedId);
+    if (!placeDef.solid && !this.isPlaceableItem(placeDef.key)) return;
+
+    // In survival mode, must have item in inventory
+    if (this.survivalMode) {
+      if (!this.inventory.consumeSelected()) return;
+    }
+
+    const playerAABB = this.getPlayerAABB();
+    const blockAABB = AABB.fromBlock(nx, ny, nz);
+    const intersects = playerAABB.intersects(blockAABB);
+
+    // Allow placing under player's feet (boost player up)
+    const isUnderFeet = intersects && ny < this.position.y + 0.1;
+
+    if (!intersects || isUnderFeet) {
+      this.chunkManager.setBlock(nx, ny, nz, selectedId);
+      this.chunkManager.markPlayerPlaced(nx, ny, nz);
+      this.onBlockChange(nx, ny, nz);
+      this.playSound('place');
+
+      if (isUnderFeet) {
+        this.position.y = ny + 1;
+        this.velocity.y = 0;
+        this.onGround = true;
       }
     }
   }
@@ -408,8 +517,11 @@ export class PlayerController {
       this.updateCreative(dt);
     }
 
+    // Resolve if player got stuck inside a block
+    this.resolveStuck();
+
     // Update camera
-    this.camera.position.set(this.position.x, this.position.y + PLAYER_HEIGHT * 0.8, this.position.z);
+    this.camera.position.set(this.position.x, this.position.y + PLAYER_HEIGHT * 0.9, this.position.z);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
@@ -419,9 +531,32 @@ export class PlayerController {
 
     // Update drop entities
     this.updateDrops(dt);
+
+    // Update arm swing animation
+    this.updateArmSwing(dt);
+
+    // Continuous placement while holding right-click
+    this.updatePlacing(dt);
+  }
+
+  private updatePlacing(dt: number) {
+    if (!this.isPlacing) return;
+    this.placeCooldown -= dt;
+    if (this.placeCooldown <= 0) {
+      this.placeBlock();
+      this.placeCooldown = this.PLACE_INTERVAL;
+    }
   }
 
   private updateCreative(dt: number) {
+    if (this.isFlying) {
+      this.updateFlying(dt);
+    } else {
+      this.updateCreativeOnFoot(dt);
+    }
+  }
+
+  private updateFlying(dt: number) {
     const speed = this.keys.has('ShiftLeft') ? FLY_SPEED * 1.5 : FLY_SPEED;
 
     const forward = new THREE.Vector3(0, 0, -1);
@@ -463,6 +598,77 @@ export class PlayerController {
 
     this.position.y += moveY;
     if (this.checkCollision()) this.position.y -= moveY;
+  }
+
+  private updateCreativeOnFoot(dt: number) {
+    const speed = this.keys.has('ShiftLeft') ? WALK_SPEED * 1.5 : WALK_SPEED;
+
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyQuaternion(this.camera.quaternion);
+    forward.y = 0;
+    forward.normalize();
+
+    const right = new THREE.Vector3(1, 0, 0);
+    right.applyQuaternion(this.camera.quaternion);
+    right.y = 0;
+    right.normalize();
+
+    let dx = 0;
+    let dz = 0;
+
+    if (this.moveForward) { dx += forward.x; dz += forward.z; }
+    if (this.moveBackward) { dx -= forward.x; dz -= forward.z; }
+    if (this.moveRight) { dx += right.x; dz += right.z; }
+    if (this.moveLeft) { dx -= right.x; dz -= right.z; }
+
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len > 0) {
+      dx /= len;
+      dz /= len;
+    }
+
+    // Apply horizontal movement
+    const moveX = dx * speed * dt;
+    const moveZ = dz * speed * dt;
+
+    this.position.x += moveX;
+    if (this.checkCollision()) this.position.x -= moveX;
+
+    this.position.z += moveZ;
+    if (this.checkCollision()) this.position.z -= moveZ;
+
+    // Apply gravity
+    this.velocity.y -= GRAVITY * dt;
+
+    // Terminal velocity
+    if (this.velocity.y < -50) this.velocity.y = -50;
+
+    // Apply vertical velocity
+    this.position.y += this.velocity.y * dt;
+
+    // Ground collision
+    this.onGround = false;
+    if (this.checkCollision()) {
+      if (this.velocity.y < 0) {
+        this.onGround = true;
+        this.fallDistance = 0;
+      }
+      this.position.y -= this.velocity.y * dt;
+      this.velocity.y = 0;
+    }
+
+    // Track fall distance
+    if (this.velocity.y < 0 && !this.onGround) {
+      this.fallDistance += Math.abs(this.velocity.y) * dt;
+    } else if (this.onGround) {
+      this.fallDistance = 0;
+    }
+
+    // Jump
+    if (this.moveUp && this.onGround) {
+      this.velocity.y = JUMP_FORCE;
+      this.onGround = false;
+    }
   }
 
   private updateSurvival(dt: number) {
@@ -554,6 +760,30 @@ export class PlayerController {
     this.fallDistance = 0;
     this.pendingFallDamage = 0;
     this.onGround = false;
+    this.isFlying = false;
+  }
+
+  private triggerArmSwing() {
+    if (!this.armMesh) return;
+    this.isArmSwinging = true;
+    this.armSwingProgress = 0;
+    this.armMesh.visible = true;
+  }
+
+  private updateArmSwing(dt: number) {
+    if (!this.isArmSwinging || !this.armMesh) return;
+
+    this.armSwingProgress += dt * 12; // swing speed
+
+    // Swing animation: rotate arm forward and back
+    const swingAngle = Math.sin(this.armSwingProgress * Math.PI) * 1.2;
+    this.armMesh.rotation.x = swingAngle;
+
+    if (this.armSwingProgress >= 1) {
+      this.isArmSwinging = false;
+      this.armMesh.visible = false;
+      this.armMesh.rotation.x = 0;
+    }
   }
 
   private updateBlockName() {
@@ -581,7 +811,11 @@ export class PlayerController {
         this.voxelRenderer.removeDropEntity(drop);
         this.playSound('place'); // pickup sound
         if (this.onPickupDrop) {
-          this.onPickupDrop(drop.blockId);
+          const accepted = this.onPickupDrop(drop.blockId);
+          if (!accepted) {
+            // Inventory full, drop stays? No, we already removed it.
+            // For now, just let it disappear if inventory is full.
+          }
         }
       }
     }
@@ -607,6 +841,42 @@ export class PlayerController {
       }
     }
     return false;
+  }
+
+  // Push player out of solid blocks if stuck inside
+  resolveStuck(): void {
+    const maxIterations = 10;
+    for (let i = 0; i < maxIterations; i++) {
+      if (!this.checkCollision()) break;
+      // Try pushing up first, then in cardinal directions
+      this.position.y += 0.5;
+      if (!this.checkCollision()) return;
+      this.position.y -= 0.5;
+      // Try pushing in each direction
+      const pushes = [
+        { x: 0.3, y: 0, z: 0 },
+        { x: -0.3, y: 0, z: 0 },
+        { x: 0, y: 0, z: 0.3 },
+        { x: 0, y: 0, z: -0.3 },
+      ];
+      let resolved = false;
+      for (const p of pushes) {
+        this.position.x += p.x;
+        this.position.y += p.y;
+        this.position.z += p.z;
+        if (!this.checkCollision()) {
+          resolved = true;
+          break;
+        }
+        this.position.x -= p.x;
+        this.position.y -= p.y;
+        this.position.z -= p.z;
+      }
+      if (!resolved) {
+        // If all directions fail, push up more aggressively
+        this.position.y += 1.0;
+      }
+    }
   }
 
   dispose() {
