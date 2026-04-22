@@ -19,6 +19,10 @@ const FULL_BLOCK_BOUNDS: BlockBounds = {
 };
 
 const SPECIAL_RENDER_BOUNDS: Record<string, BlockBounds> = {
+  sapling: { minX: 0.38, minY: 0, minZ: 0.38, maxX: 0.62, maxY: 0.75, maxZ: 0.62 },
+  tall_grass: { minX: 0.3, minY: 0, minZ: 0.3, maxX: 0.7, maxY: 0.78, maxZ: 0.7 },
+  flower_yellow: { minX: 0.34, minY: 0, minZ: 0.34, maxX: 0.66, maxY: 0.8, maxZ: 0.66 },
+  flower_red: { minX: 0.34, minY: 0, minZ: 0.34, maxX: 0.66, maxY: 0.8, maxZ: 0.66 },
   redstone_dust: { minX: 0.05, minY: 0, minZ: 0.05, maxX: 0.95, maxY: 0.06, maxZ: 0.95 },
   redstone_torch: { minX: 0.4, minY: 0, minZ: 0.4, maxX: 0.6, maxY: 0.8, maxZ: 0.6 },
   lever: { minX: 0.32, minY: 0, minZ: 0.32, maxX: 0.68, maxY: 0.22, maxZ: 0.68 },
