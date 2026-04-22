@@ -599,6 +599,7 @@ function showStartMenu() {
       <div class="start-body">
         <div class="start-tabs">
           <div class="start-tab active" data-tab="mode">开始游戏</div>
+          <div class="start-tab" data-tab="levels">闯关模式</div>
           <div class="start-tab" data-tab="settings">设置</div>
           <div class="start-tab" data-tab="guide">游戏说明</div>
         </div>
@@ -608,7 +609,12 @@ function showStartMenu() {
             <div class="mode-card selected" data-mode="tutorial">
               <div class="mode-icon">🎓</div>
               <h3>新手教程</h3>
-              <p>跟随引导关卡学习基础建造技巧，适合新玩家</p>
+              <p>跟随引导关卡学习基础建造技巧</p>
+            </div>
+            <div class="mode-card" data-mode="challenge">
+              <div class="mode-icon">🏆</div>
+              <h3>闯关模式</h3>
+              <p>20关进阶挑战，支持选择关卡</p>
             </div>
             <div class="mode-card" data-mode="creative">
               <div class="mode-icon">🏗️</div>
@@ -618,12 +624,7 @@ function showStartMenu() {
             <div class="mode-card" data-mode="survival">
               <div class="mode-icon">⚔️</div>
               <h3>生存挑战</h3>
-              <p>采集资源、合成工具、对抗怪物，挑战生存极限</p>
-            </div>
-            <div class="mode-card" data-mode="explore">
-              <div class="mode-icon">🔍</div>
-              <h3>探索模式</h3>
-              <p>探索地图，熟悉环境后再开始建造</p>
+              <p>采集资源、合成工具、对抗怪物</p>
             </div>
           </div>
         </div>
@@ -692,7 +693,33 @@ function showStartMenu() {
               <div class="guide-item"><span class="key">R</span> 重生</div>
             </div>
           </div>
-        <p style="font-size:12px;color:#888;margin-top:12px;">选择模式后点击开始游戏</p>
+        </div>
+
+        <div class="start-panel" data-panel="levels">
+          <div class="level-list">
+            <div class="level-item" data-level="0"><div class="level-num">1</div><div class="level-info"><div class="level-title">第一块方块</div><div class="level-desc">放置任意1个方块</div></div></div>
+            <div class="level-item" data-level="1"><div class="level-num">2</div><div class="level-info"><div class="level-title">小小高塔</div><div class="level-desc">堆叠3个方块成一列</div></div></div>
+            <div class="level-item" data-level="2"><div class="level-num">3</div><div class="level-info"><div class="level-title">小平台</div><div class="level-desc">建造3x3的平台</div></div></div>
+            <div class="level-item" data-level="3"><div class="level-num">4</div><div class="level-info"><div class="level-title">小房子</div><div class="level-desc">有地板和墙的空间</div></div></div>
+            <div class="level-item" data-level="4"><div class="level-num">5</div><div class="level-info"><div class="level-title">更高的塔</div><div class="level-desc">堆叠5个方块成塔</div></div></div>
+            <div class="level-item" data-level="5"><div class="level-num">6</div><div class="level-info"><div class="level-title">大平台</div><div class="level-desc">建造5x5的平台</div></div></div>
+            <div class="level-item" data-level="6"><div class="level-num">7</div><div class="level-info"><div class="level-title">石头房子</div><div class="level-desc">用不同材料建房子</div></div></div>
+            <div class="level-item" data-level="7"><div class="level-num">8</div><div class="level-info"><div class="level-title">双层小楼</div><div class="level-desc">建造两层楼的房子</div></div></div>
+            <div class="level-item" data-level="8"><div class="level-num">9</div><div class="level-info"><div class="level-title">围栏</div><div class="level-desc">建造一条6格长的围栏</div></div></div>
+            <div class="level-item" data-level="9"><div class="level-num">10</div><div class="level-info"><div class="level-title">桥梁</div><div class="level-desc">建造一座6格长的桥</div></div></div>
+            <div class="level-item" data-level="10"><div class="level-num">11</div><div class="level-info"><div class="level-title">长廊</div><div class="level-desc">建造一条8格长的走廊</div></div></div>
+            <div class="level-item" data-level="11"><div class="level-num">12</div><div class="level-info"><div class="level-title">观景台</div><div class="level-desc">在高处建造平台</div></div></div>
+            <div class="level-item" data-level="12"><div class="level-num">13</div><div class="level-info"><div class="level-title">窗户房子</div><div class="level-desc">建造带窗户的房子</div></div></div>
+            <div class="level-item" data-level="13"><div class="level-num">14</div><div class="level-info"><div class="level-title">城堡一角</div><div class="level-desc">建造城堡的一个角落</div></div></div>
+            <div class="level-item" data-level="14"><div class="level-num">15</div><div class="level-info"><div class="level-title">隧道</div><div class="level-desc">挖掘一条5格长的隧道</div></div></div>
+            <div class="level-item" data-level="15"><div class="level-num">16</div><div class="level-info"><div class="level-title">地下室</div><div class="level-desc">挖掘一个地下室空间</div></div></div>
+            <div class="level-item" data-level="16"><div class="level-num">17</div><div class="level-info"><div class="level-title">水池</div><div class="level-desc">建造一个有边框的水池</div></div></div>
+            <div class="level-item" data-level="17"><div class="level-num">18</div><div class="level-info"><div class="level-title">阶梯建筑</div><div class="level-desc">建造带有阶梯的建筑</div></div></div>
+            <div class="level-item" data-level="18"><div class="level-num">19</div><div class="level-info"><div class="level-title">复合结构</div><div class="level-desc">建造多个相连的建筑</div></div></div>
+            <div class="level-item" data-level="19"><div class="level-num">20</div><div class="level-info"><div class="level-title">自由创作</div><div class="level-desc">建造你的梦想建筑</div></div></div>
+          </div>
+          <p style="font-size:12px;color:#888;margin-top:12px;">点击关卡选择起始关卡，完成关卡解锁下一关</p>
+        </div>
       </div>
       <div class="start-footer">
         <button class="btn-start" id="btn-start-game">开始游戏</button>
@@ -703,6 +730,7 @@ function showStartMenu() {
 
   // State
   let selectedMode = 'tutorial';
+  let selectedStartLevel = 0;
 
   // Tab switching
   const menu = startMenu!;
@@ -725,6 +753,20 @@ function showStartMenu() {
     });
   });
 
+  // Level selection
+  menu.querySelectorAll('.level-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const lvl = parseInt((item as HTMLElement).dataset.level || '0');
+      menu.querySelectorAll('.level-item').forEach(i => i.classList.remove('completed'));
+      item.classList.add('completed');
+      selectedStartLevel = lvl;
+      // Switch to challenge mode when selecting a level
+      selectedMode = 'challenge';
+      menu.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+      menu.querySelector('.mode-card[data-mode="challenge"]')?.classList.add('selected');
+    });
+  });
+
   // Start button
   menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
     menu.remove();
@@ -732,16 +774,16 @@ function showStartMenu() {
     startMenu = null;
 
     // Apply mode
-    if (selectedMode === 'creative' || selectedMode === 'explore') {
+    if (selectedMode === 'creative') {
       player.survivalMode = false;
       levelManager.skip();
     } else if (selectedMode === 'survival') {
       player.survivalMode = true;
       giveStarterKit();
       levelManager.skip();
-    } else if (selectedMode === 'tutorial') {
+    } else if (selectedMode === 'tutorial' || selectedMode === 'challenge') {
       player.survivalMode = false;
-      levelManager.currentLevel = 0;
+      levelManager.currentLevel = selectedStartLevel;
       levelManager.skipped = false;
     }
 

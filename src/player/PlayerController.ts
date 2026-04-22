@@ -219,9 +219,32 @@ export class PlayerController {
     this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
   }
 
+  private lastClickTime = 0;
+  private lastClickButton = -1;
+  private clickDebounceMs = 100; // Debounce time for touchpad clicks
+
   private onMouseDown(e: MouseEvent) {
     if (!this.isPointerLocked) return;
-    if (e.button === 0) {
+
+    const now = Date.now();
+    const timeSinceLastClick = now - this.lastClickTime;
+
+    // Mac touchpad: right-click (two-finger tap) sometimes triggers as button 0 + ctrlKey
+    // Treat ctrlKey + button 0 as right-click (button 2)
+    let effectiveButton = e.button;
+    if (e.button === 0 && e.ctrlKey) {
+      effectiveButton = 2; // Treat as right-click
+    }
+
+    // Debounce: if same button pressed quickly after release, ignore
+    if (timeSinceLastClick < this.clickDebounceMs && effectiveButton === this.lastClickButton) {
+      return;
+    }
+
+    this.lastClickTime = now;
+    this.lastClickButton = effectiveButton;
+
+    if (effectiveButton === 0) {
       this.isMining = true;
       this.triggerArmSwing();
       if (this.survivalMode) {
@@ -229,12 +252,11 @@ export class PlayerController {
       } else {
         this.breakBlock();
       }
-    } else if (e.button === 2) {
+    } else if (effectiveButton === 2) {
       const hit = this.getRaycastResult();
       if (hit) {
         const blockId = this.chunkManager.getBlock(hit.pos.x, hit.pos.y, hit.pos.z);
         const def = BlockRegistry.getById(blockId);
-        // Interact with functional blocks instead of placing
         if ((def.key === 'bed' || def.key === 'lever' || def.key === 'button') && this.onInteract) {
           this.onInteract(hit.pos.x, hit.pos.y, hit.pos.z, blockId);
           return;
@@ -247,11 +269,17 @@ export class PlayerController {
   }
 
   private onMouseUp(e: MouseEvent) {
-    if (e.button === 0) {
+    // Also treat ctrlKey + button 0 as right-click
+    let effectiveButton = e.button;
+    if (e.button === 0 && e.ctrlKey) {
+      effectiveButton = 2;
+    }
+
+    if (effectiveButton === 0) {
       this.isMining = false;
       this.miningTarget = null;
       this.miningProgress = 0;
-    } else if (e.button === 2) {
+    } else if (effectiveButton === 2) {
       this.isPlacing = false;
     }
   }
