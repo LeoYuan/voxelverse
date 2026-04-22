@@ -54,6 +54,9 @@ export class ChunkManager {
     const lx = wx - cx * CHUNK_SIZE;
     const lz = wz - cz * CHUNK_SIZE;
     chunk.setBlock(lx, wy, lz, id);
+    if (id === 0) {
+      this.playerPlaced.delete(`${wx},${wy},${wz}`);
+    }
   }
 
   isSolid(wx: number, wy: number, wz: number): boolean {

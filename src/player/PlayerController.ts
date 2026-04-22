@@ -6,6 +6,10 @@ import { BlockRegistry } from '../blocks/BlockRegistry';
 import { DropEntity } from '../entities/DropEntity';
 import { VoxelRenderer } from '../rendering/VoxelRenderer';
 import { Inventory } from './Inventory';
+import { getHammerSwingPose, HAMMER_IDLE_POSE, HAMMER_SWING_DURATION } from './hammerSwing';
+import { resolveBlockDrops } from './dropLogic';
+import { getNextFlightToggleState } from './inputBehavior';
+import { getSharedSoundEffects } from './soundEffects';
 
 const PLAYER_HEIGHT = 1.8;
 const PLAYER_WIDTH = 0.6;
@@ -63,6 +67,7 @@ export class PlayerController {
   private onPickupDrop: ((blockId: number) => boolean) | null = null;
   public inventory: Inventory;
   private blockNameEl: HTMLElement;
+  private readonly soundEffects = getSharedSoundEffects();
 
   // Tool durability tracking
   private toolDurability = new Map<number, number>();
@@ -101,38 +106,35 @@ export class PlayerController {
 
   private setupArmMesh() {
     const group = new THREE.Group();
+    const scale = 0.8 * 0.8; // 80% of 80% = 64% of original
 
-    // Arm (handle) - thicker and longer
-    const armGeo = new THREE.BoxGeometry(0.08, 0.35, 0.08);
-    const armMat = new THREE.MeshBasicMaterial({ color: 0x8B4513 }); // Brown handle
-    const arm = new THREE.Mesh(armGeo, armMat);
-    arm.position.set(0, -0.18, 0);
-    group.add(arm);
+    // Handle pointing forward from player
+    const handleGeo = new THREE.BoxGeometry(0.04 * scale, 0.04 * scale, 0.25 * scale);
+    const handleMat = new THREE.MeshBasicMaterial({ color: 0xCD853F });
+    const handle = new THREE.Mesh(handleGeo, handleMat);
+    handle.position.set(0, 0, -0.12 * scale);
+    group.add(handle);
 
-    // Hammer head - larger and more prominent
-    const headGeo = new THREE.BoxGeometry(0.2, 0.12, 0.12);
-    const headMat = new THREE.MeshBasicMaterial({ color: 0x555555 }); // Dark gray metal
+    // Hammer head at handle end, horizontal
+    const headGeo = new THREE.BoxGeometry(0.14 * scale, 0.07 * scale, 0.04 * scale);
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.set(0, -0.38, 0);
+    head.position.set(0, 0, -0.26 * scale);
     group.add(head);
 
-    // Add lighter stripes on hammer faces
-    const faceGeo = new THREE.BoxGeometry(0.21, 0.08, 0.03);
-    const faceMat = new THREE.MeshBasicMaterial({ color: 0x777777 });
-    const faceTop = new THREE.Mesh(faceGeo, faceMat);
-    faceTop.position.set(0, -0.38, 0.06);
-    group.add(faceTop);
-
-    const faceBottom = new THREE.Mesh(faceGeo, faceMat);
-    faceBottom.position.set(0, -0.38, -0.06);
-    group.add(faceBottom);
-
     this.armMesh = group as unknown as THREE.Mesh;
-    this.armMesh.visible = false;
     this.camera.add(this.armMesh);
-    this.armMesh.position.set(0.25, -0.3, -0.4);
-    // Initial rotation: hammer raised up
-    this.armMesh.rotation.set(-1.2, 0.15, 0);
+    this.armMesh.position.set(
+      HAMMER_IDLE_POSE.position.x,
+      HAMMER_IDLE_POSE.position.y,
+      HAMMER_IDLE_POSE.position.z
+    );
+    this.armMesh.rotation.set(
+      HAMMER_IDLE_POSE.rotation.x,
+      HAMMER_IDLE_POSE.rotation.y,
+      HAMMER_IDLE_POSE.rotation.z
+    );
+    this.armMesh.visible = false;
   }
 
   private setupInput() {
@@ -167,17 +169,17 @@ export class PlayerController {
       case 'Space':
         this.moveUp = true;
         if (!this.survivalMode) {
-          const now = performance.now();
-          if (now - this.lastSpacePressTime < 300) {
-            this.spaceTapCount++;
-            if (this.spaceTapCount >= 2) {
-              this.isFlying = !this.isFlying;
-              this.spaceTapCount = 0;
-            }
-          } else {
-            this.spaceTapCount = 1;
-          }
-          this.lastSpacePressTime = now;
+          const nextState = getNextFlightToggleState({
+            isSurvivalMode: this.survivalMode,
+            isFlying: this.isFlying,
+            lastSpacePressTime: this.lastSpacePressTime,
+            spaceTapCount: this.spaceTapCount,
+            now: performance.now(),
+            isRepeat: e.repeat,
+          });
+          this.isFlying = nextState.isFlying;
+          this.spaceTapCount = nextState.spaceTapCount;
+          this.lastSpacePressTime = nextState.lastSpacePressTime;
         }
         break;
       case 'ShiftLeft': this.moveDown = true; break;
@@ -382,32 +384,20 @@ export class PlayerController {
 
   private breakBlockAt(x: number, y: number, z: number) {
     const blockId = this.chunkManager.getBlock(x, y, z);
+    const selectedToolId = this.inventory.getSelectedBlockId();
     this.chunkManager.setBlock(x, y, z, 0);
     this.onBlockChange(x, y, z);
     this.playSound('break');
 
     // No drops in creative mode
     if (this.survivalMode && blockId !== 0) {
-      const def = BlockRegistry.getById(blockId);
-      if (def.drops && def.drops.length > 0) {
-        for (const dropConfig of def.drops) {
-          const dropDef = BlockRegistry.getByKey(dropConfig.item);
-          if (dropDef) {
-            const drop = new DropEntity(
-              x + 0.5,
-              y + 0.5,
-              z + 0.5,
-              dropDef.id
-            );
-            this.voxelRenderer.addDropEntity(drop);
-          }
-        }
-      } else {
+      const drops = resolveBlockDrops(blockId, selectedToolId);
+      for (const dropId of drops) {
         const drop = new DropEntity(
           x + 0.5,
           y + 0.5,
           z + 0.5,
-          blockId
+          dropId
         );
         this.voxelRenderer.addDropEntity(drop);
       }
@@ -421,7 +411,6 @@ export class PlayerController {
     const step = 0.1;
     const maxDist = 6;
     // Ray starts from camera position (matches crosshair)
-    const eyeY = this.position.y + PLAYER_HEIGHT * 0.9;
     let px = this.camera.position.x;
     let py = this.camera.position.y;
     let pz = this.camera.position.z;
@@ -522,26 +511,7 @@ export class PlayerController {
 
   private playSound(type: 'break' | 'place') {
     try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      if (type === 'break') {
-        osc.frequency.setValueAtTime(200 + Math.random() * 100, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.1);
-      } else {
-        osc.frequency.setValueAtTime(400 + Math.random() * 50, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.08);
-      }
+      this.soundEffects.play(type);
     } catch {
       // Audio not available
     }
@@ -817,33 +787,36 @@ export class PlayerController {
     if (!this.armMesh) return;
     this.isArmSwinging = true;
     this.armSwingProgress = 0;
-    // Reset to raised position before starting animation
-    this.armMesh.rotation.x = -1.2;
     this.armMesh.visible = true;
+    const pose = getHammerSwingPose(0);
+    this.armMesh.position.set(pose.position.x, pose.position.y, pose.position.z);
+    this.armMesh.rotation.set(pose.rotation.x, pose.rotation.y, pose.rotation.z);
   }
 
   private updateArmSwing(dt: number) {
     if (!this.isArmSwinging || !this.armMesh) return;
 
-    this.armSwingProgress += dt * 5; // swing speed - slower for visibility
+    this.armSwingProgress += dt;
 
-    // Hammer swing animation: swing down from raised position to hit, then back
-    const t = Math.min(this.armSwingProgress, 1);
-    let swingAngle;
-    if (t < 0.3) {
-      // Quick swing down to hit
-      swingAngle = -1.2 + t * 6; // -1.2 -> 0.6 at t=0.3
-    } else {
-      // Slow swing back up
-      const tt = (t - 0.3) / 0.7; // 0 -> 1
-      swingAngle = 0.6 - tt * 1.8; // 0.6 -> -1.2
-    }
-    this.armMesh.rotation.x = swingAngle;
-
-    if (this.armSwingProgress >= 1) {
+    if (this.armSwingProgress >= HAMMER_SWING_DURATION) {
       this.isArmSwinging = false;
       this.armMesh.visible = false;
+      this.armMesh.position.set(
+        HAMMER_IDLE_POSE.position.x,
+        HAMMER_IDLE_POSE.position.y,
+        HAMMER_IDLE_POSE.position.z
+      );
+      this.armMesh.rotation.set(
+        HAMMER_IDLE_POSE.rotation.x,
+        HAMMER_IDLE_POSE.rotation.y,
+        HAMMER_IDLE_POSE.rotation.z
+      );
+      return;
     }
+
+    const pose = getHammerSwingPose(this.armSwingProgress);
+    this.armMesh.position.set(pose.position.x, pose.position.y, pose.position.z);
+    this.armMesh.rotation.set(pose.rotation.x, pose.rotation.y, pose.rotation.z);
   }
 
   private updateBlockName() {

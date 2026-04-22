@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Chunk, CHUNK_SIZE, CHUNK_HEIGHT } from '../engine/Chunk';
 import { BlockRegistry } from '../blocks/BlockRegistry';
+import { getBlockRenderBounds } from '../blocks/blockGeometry';
 import { DropEntity } from '../entities/DropEntity';
 
 const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -8,6 +9,9 @@ const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
 // Reusable temp objects
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
+const tempPosition = new THREE.Vector3();
+const tempScale = new THREE.Vector3();
+const tempQuaternion = new THREE.Quaternion();
 
 export class ChunkMesh {
   public mesh: THREE.InstancedMesh;
@@ -54,7 +58,17 @@ export class ChunkMesh {
           if (!hasExposedFace) continue;
 
           const def = BlockRegistry.getById(blockId);
-          tempMatrix.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
+          const bounds = getBlockRenderBounds(def);
+          const centerX = x + (bounds.minX + bounds.maxX) / 2;
+          const centerY = y + (bounds.minY + bounds.maxY) / 2;
+          const centerZ = z + (bounds.minZ + bounds.maxZ) / 2;
+          const scaleX = bounds.maxX - bounds.minX;
+          const scaleY = bounds.maxY - bounds.minY;
+          const scaleZ = bounds.maxZ - bounds.minZ;
+
+          tempPosition.set(centerX, centerY, centerZ);
+          tempScale.set(scaleX, scaleY, scaleZ);
+          tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
           this.mesh.setMatrixAt(instanceIndex, tempMatrix);
           tempColor.setHex(def.color);
           // Make transparent blocks slightly see-through
@@ -85,6 +99,7 @@ export class VoxelRenderer {
   private chunkMeshes = new Map<string, ChunkMesh>();
   private sunLight: THREE.DirectionalLight;
   public dropEntities: DropEntity[] = [];
+  private readonly handleResize = () => this.onResize();
 
   constructor(container: HTMLElement) {
     this.scene = new THREE.Scene();
@@ -96,6 +111,8 @@ export class VoxelRenderer {
       0.1,
       1000
     );
+    // Camera must be added to scene for child objects (like arm mesh) to render
+    this.scene.add(this.camera);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -121,7 +138,7 @@ export class VoxelRenderer {
     this.sunLight.shadow.camera.bottom = -d;
     this.scene.add(this.sunLight);
 
-    window.addEventListener('resize', () => this.onResize());
+    window.addEventListener('resize', this.handleResize);
   }
 
   onResize() {
@@ -172,6 +189,7 @@ export class VoxelRenderer {
     if (idx >= 0) {
       this.dropEntities.splice(idx, 1);
       this.scene.remove(entity.mesh);
+      entity.dispose();
     }
   }
 
@@ -199,6 +217,6 @@ export class VoxelRenderer {
 
   dispose() {
     this.renderer.dispose();
-    window.removeEventListener('resize', () => this.onResize());
+    window.removeEventListener('resize', this.handleResize);
   }
 }

@@ -57,6 +57,24 @@ export class Inventory {
     return remaining;
   }
 
+  canFit(blockId: number, count: number): boolean {
+    if (blockId === 0 || count <= 0) return true;
+
+    const maxStack = TOOL_IDS.has(blockId) ? 1 : MAX_STACK;
+    let capacity = 0;
+
+    for (const slot of this.slots) {
+      if (slot.blockId === blockId) {
+        capacity += Math.max(0, maxStack - slot.count);
+      } else if (slot.blockId === 0) {
+        capacity += maxStack;
+      }
+      if (capacity >= count) return true;
+    }
+
+    return false;
+  }
+
   /** Remove items from a slot. Returns true if successful. */
   removeFromSlot(slotIndex: number, count: number): boolean {
     const slot = this.slots[slotIndex];
@@ -97,6 +115,7 @@ export class Inventory {
   /** Consume inputs and add output for a crafting recipe. Returns true if successful. */
   craft(recipe: CraftingRecipe): boolean {
     if (!this.canCraft(recipe)) return false;
+    if (!this.canFit(recipe.output, recipe.count)) return false;
 
     const needs = new Map<number, number>();
     for (const id of recipe.inputs) {

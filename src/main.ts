@@ -1,18 +1,17 @@
 import { VoxelRenderer } from './rendering/VoxelRenderer';
 import { ChunkManager } from './engine/ChunkManager';
 import { PlayerController } from './player/PlayerController';
-import { CHUNK_SIZE } from './engine/Chunk';
+import { CHUNK_SIZE, CHUNK_HEIGHT } from './engine/Chunk';
 import { DayNightCycle, DAY_LENGTH } from './engine/DayNightCycle';
 import { PlayerStats } from './player/PlayerStats';
 import {
   BLOCK_BED, BLOCK_REDSTONE_DUST, BLOCK_REDSTONE_TORCH,
   BLOCK_REDSTONE_LAMP, BLOCK_REDSTONE_LAMP_LIT, BLOCK_LEVER,
   BLOCK_BUTTON, BLOCK_REDSTONE_BLOCK, BLOCK_REPEATER,
-  BLOCK_WATER, BLOCK_PLANKS, BLOCK_WOOD, BLOCK_GLASS,
-  BLOCK_SLAB_WOOD, BLOCK_CRAFTING_TABLE, BLOCK_COBBLESTONE,
+  BLOCK_WATER, BLOCK_PLANKS, BLOCK_WOOD, BLOCK_SLAB_WOOD, BLOCK_CRAFTING_TABLE, BLOCK_COBBLESTONE,
   BLOCK_FLOWER_YELLOW, BLOCK_FLOWER_RED, BLOCK_FURNACE,
   BLOCK_CHEST, BLOCK_BRICK, BLOCK_STONE, BLOCK_COAL_ORE,
-  BLOCK_IRON_ORE, BLOCK_SLAB_STONE, BLOCK_TALL_GRASS,
+  BLOCK_SLAB_STONE, BLOCK_TALL_GRASS, BLOCK_LEAVES,
   BLOCK_DIRT,
   BlockRegistry, type BlockCategory
 } from './blocks/BlockRegistry';
@@ -24,6 +23,8 @@ import { Creeper } from './entities/Creeper';
 import { Cow } from './entities/Cow';
 import { Crafting } from './crafting/CraftingRegistry';
 import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
+import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
+import { getInitialSceneLayout } from './world/initialSceneLayout';
 import './style.css';
 
 const container = document.getElementById('app')!;
@@ -54,338 +55,261 @@ for (const chunk of chunkManager.getAllChunks()) {
   vr.addChunkMesh(chunk);
 }
 
-// Build a meaningful starter village with various structures
-function buildInitialScene() {
-  // Build main wooden house (left side) - crafting area
-  buildWoodenHouse(-15, -8);
+const initialSceneLayout = getInitialSceneLayout();
 
-  // Build brick house (right side) - smelting area
-  buildBrickHouse(12, -10);
-
-  // Build storage shed
-  buildStorageShed(-8, 15);
-
-  // Build stone tower landmark
-  buildStoneTower(18, 12);
-
-  // Build mine entrance
-  buildMineEntrance(-25, 5);
-
-  // Build farm plot
-  buildFarmPlot(5, 25);
-
-  // Build redstone demonstration
-  buildRedstoneDemo(25, 0);
-
-  // Build connecting paths
-  buildVillagePaths();
-
-  // Add ambient details
-  addAmbientDetails();
-
-  // Rebuild all affected chunks
-  rebuildAffectedChunks();
-}
-
-function buildWoodenHouse(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-  const w = 5, d = 6, h = 3;
-
-  // Floor
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_PLANKS);
+function fillRect(baseX: number, y: number, baseZ: number, width: number, depth: number, blockId: number) {
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) {
+      chunkManager.setBlock(baseX + x, y, baseZ + z, blockId);
     }
   }
+}
 
-  // Walls
-  for (let y = 1; y <= h; y++) {
-    for (let x = 0; x < w; x++) {
-      for (let z = 0; z < d; z++) {
-        if (x === 0 || x === w-1 || z === 0 || z === d-1) {
-          // Door opening
-          if (z === d-1 && x === 2 && y <= 2) continue;
-          // Windows
-          if ((x === 0 || x === w-1) && z === 3 && y === 2) {
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_GLASS);
-          } else {
-            const isCorner = (x === 0 || x === w-1) && (z === 0 || z === d-1);
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, isCorner ? BLOCK_WOOD : BLOCK_PLANKS);
-          }
-        }
+function buildSimpleTree(baseX: number, baseY: number, baseZ: number) {
+  for (let y = 0; y < 4; y++) {
+    chunkManager.setBlock(baseX, baseY + y, baseZ, BLOCK_WOOD);
+  }
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      chunkManager.setBlock(baseX + dx, baseY + 3, baseZ + dz, BLOCK_LEAVES);
+      if (Math.abs(dx) + Math.abs(dz) < 2) {
+        chunkManager.setBlock(baseX + dx, baseY + 4, baseZ + dz, BLOCK_LEAVES);
+      }
+    }
+  }
+}
+
+function buildSpawnPlaza() {
+  const { spawn, spawnLookTarget } = initialSceneLayout;
+  const baseY = 9;
+
+  for (let dx = -5; dx <= 5; dx++) {
+    for (let dz = -5; dz <= 5; dz++) {
+      for (let y = baseY + 1; y <= baseY + 4; y++) {
+        chunkManager.setBlock(spawn.x + dx, y, spawn.z + dz, 0);
+      }
+
+      const dist = Math.abs(dx) + Math.abs(dz);
+      const blockId = dist <= 4 ? BLOCK_COBBLESTONE : BLOCK_STONE;
+      chunkManager.setBlock(spawn.x + dx, baseY, spawn.z + dz, blockId);
+
+      if (Math.abs(dx) === 5 || Math.abs(dz) === 5) {
+        chunkManager.setBlock(spawn.x + dx, baseY + 1, spawn.z + dz, BLOCK_SLAB_STONE);
       }
     }
   }
 
-  // Roof
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY + h + 1, baseZ + z, BLOCK_SLAB_WOOD);
-    }
+  fillRect(spawn.x - 1, baseY + 1, spawn.z - 1, 3, 3, BLOCK_PLANKS);
+
+  const forwardX = Math.sign(spawnLookTarget.x - spawn.x);
+  const forwardZ = Math.sign(spawnLookTarget.z - spawn.z);
+  for (let i = 1; i <= 4; i++) {
+    chunkManager.setBlock(spawn.x + forwardX * i, baseY + 1, spawn.z + forwardZ * i, BLOCK_PLANKS);
   }
 
-  // Interior: crafting table, bed, chest
-  chunkManager.setBlock(baseX + 1, groundY + 1, baseZ + 1, BLOCK_CRAFTING_TABLE);
-  chunkManager.setBlock(baseX + 3, groundY + 1, baseZ + 1, BLOCK_BED);
-  chunkManager.setBlock(baseX + 3, groundY + 1, baseZ + 2, BLOCK_BED);
-  chunkManager.setBlock(baseX + 1, groundY + 1, baseZ + 4, BLOCK_CHEST);
+  const archZ = spawn.z - 4;
+  for (let y = 1; y <= 3; y++) {
+    chunkManager.setBlock(spawn.x - 1, baseY + y, archZ, BLOCK_STONE);
+    chunkManager.setBlock(spawn.x + 1, baseY + y, archZ, BLOCK_STONE);
+  }
+  chunkManager.setBlock(spawn.x, baseY + 4, archZ, BLOCK_SLAB_STONE);
+  chunkManager.setBlock(spawn.x - 1, baseY + 4, archZ, BLOCK_REDSTONE_LAMP);
+  chunkManager.setBlock(spawn.x + 1, baseY + 4, archZ, BLOCK_REDSTONE_LAMP);
 }
 
-function buildBrickHouse(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-  const w = 4, d = 4, h = 3;
+function buildMaterialPoint() {
+  const { materialPoint } = initialSceneLayout;
+  const groundY = getGroundHeight(materialPoint.x, materialPoint.z);
 
-  // Floor
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_COBBLESTONE);
-    }
-  }
+  buildSimpleTree(materialPoint.x - 2, groundY + 1, materialPoint.z);
+  buildSimpleTree(materialPoint.x + 1, groundY + 1, materialPoint.z + 2);
 
-  // Walls (brick)
-  for (let y = 1; y <= h; y++) {
-    for (let x = 0; x < w; x++) {
-      for (let z = 0; z < d; z++) {
-        if (x === 0 || x === w-1 || z === 0 || z === d-1) {
-          // Door opening
-          if (z === d-1 && x === 1 && y <= 2) continue;
-          // Windows
-          if (x === 0 && z === 2 && y === 2) {
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_GLASS);
-          } else {
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_BRICK);
-          }
-        }
+  for (let x = -2; x <= 2; x++) {
+    for (let z = -1; z <= 2; z++) {
+      chunkManager.setBlock(materialPoint.x + x, groundY, materialPoint.z + z, BLOCK_DIRT);
+      if ((x + z) % 2 === 0) {
+        chunkManager.setBlock(materialPoint.x + x, groundY + 1, materialPoint.z + z, BLOCK_TALL_GRASS);
       }
     }
   }
 
-  // Roof
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY + h + 1, baseZ + z, BLOCK_SLAB_STONE);
-    }
-  }
-
-  // Interior: furnace
-  chunkManager.setBlock(baseX + 2, groundY + 1, baseZ + 1, BLOCK_FURNACE);
-}
-
-function buildStorageShed(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-  const w = 3, d = 3, h = 2;
-
-  // Floor
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_PLANKS);
-    }
-  }
-
-  // Walls
-  for (let y = 1; y <= h; y++) {
-    for (let x = 0; x < w; x++) {
-      for (let z = 0; z < d; z++) {
-        if (x === 0 || x === w-1 || z === 0 || z === d-1) {
-          if (z === d-1 && x === 1 && y === 1) continue;
-          chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_PLANKS);
-        }
+  const quarryX = materialPoint.x + 3;
+  const quarryZ = materialPoint.z - 1;
+  for (let dx = 0; dx < 3; dx++) {
+    for (let dz = 0; dz < 3; dz++) {
+      chunkManager.setBlock(quarryX + dx, groundY, quarryZ + dz, BLOCK_COBBLESTONE);
+      chunkManager.setBlock(quarryX + dx, groundY - 1, quarryZ + dz, BLOCK_STONE);
+      if (dx === 1 && dz === 1) {
+        chunkManager.setBlock(quarryX + dx, groundY, quarryZ + dz, 0);
+        chunkManager.setBlock(quarryX + dx, groundY - 2, quarryZ + dz, BLOCK_COAL_ORE);
       }
     }
   }
-
-  // Interior: multiple chests
-  chunkManager.setBlock(baseX + 1, groundY + 1, baseZ + 0, BLOCK_CHEST);
-  chunkManager.setBlock(baseX + 0, groundY + 1, baseZ + 1, BLOCK_CHEST);
-  chunkManager.setBlock(baseX + 2, groundY + 1, baseZ + 1, BLOCK_CHEST);
 }
 
-function buildStoneTower(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-  const w = 3, d = 3, towerHeight = 6;
+function buildBuildingPoint() {
+  const { buildingPoint } = initialSceneLayout;
+  const groundY = getGroundHeight(buildingPoint.x, buildingPoint.z);
 
-  // Base platform
-  for (let x = 0; x < w; x++) {
-    for (let z = 0; z < d; z++) {
-      chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_STONE);
-    }
-  }
+  fillRect(buildingPoint.x, groundY, buildingPoint.z, 5, 5, BLOCK_PLANKS);
 
-  // Tower walls
-  for (let y = 1; y <= towerHeight; y++) {
-    for (let x = 0; x < w; x++) {
-      for (let z = 0; z < d; z++) {
-        if (x === 0 || x === w-1 || z === 0 || z === d-1) {
-          if (y >= towerHeight - 1 && (x === 1 || z === 1)) {
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_GLASS);
-          } else {
-            chunkManager.setBlock(baseX + x, groundY + y, baseZ + z, BLOCK_STONE);
-          }
-        }
-      }
-    }
-  }
-
-  // Top platform
-  for (let x = -1; x <= w; x++) {
-    for (let z = -1; z <= d; z++) {
-      if (x >= 0 && x < w && z >= 0 && z < d) continue;
-      chunkManager.setBlock(baseX + x, groundY + towerHeight + 1, baseZ + z, BLOCK_SLAB_STONE);
-    }
-  }
-}
-
-function buildMineEntrance(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-
-  // Entrance frame
-  for (let y = 0; y <= 3; y++) {
-    chunkManager.setBlock(baseX, groundY + y, baseZ, BLOCK_COBBLESTONE);
-    chunkManager.setBlock(baseX + 2, groundY + y, baseZ, BLOCK_COBBLESTONE);
-    if (y >= 2) {
-      chunkManager.setBlock(baseX + 1, groundY + y, baseZ, BLOCK_COBBLESTONE);
-    }
-  }
-
-  // Dig down into mine
-  for (let dy = 0; dy < 5; dy++) {
-    for (let x = 0; x < 3; x++) {
-      for (let z = 0; z < 3; z++) {
-        if (x === 0 || x === 2 || z === 0 || z === 2) {
-          chunkManager.setBlock(baseX + x, groundY - dy, baseZ + z, BLOCK_STONE);
-        } else {
-          chunkManager.setBlock(baseX + x, groundY - dy, baseZ + z, 0);
-        }
-      }
-    }
-  }
-
-  // Add ores in the mine
-  chunkManager.setBlock(baseX + 1, groundY - 3, baseZ + 1, BLOCK_COAL_ORE);
-  chunkManager.setBlock(baseX + 1, groundY - 4, baseZ + 1, BLOCK_IRON_ORE);
-
-  // Warning markers
-  chunkManager.setBlock(baseX + 3, groundY + 1, baseZ, BLOCK_TALL_GRASS);
-  chunkManager.setBlock(baseX - 1, groundY + 1, baseZ, BLOCK_TALL_GRASS);
-}
-
-function buildFarmPlot(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-
-  // 6x6 farm plot with borders
-  for (let x = -1; x <= 6; x++) {
-    for (let z = -1; z <= 6; z++) {
-      const isBorder = x === -1 || x === 6 || z === -1 || z === 6;
-      if (isBorder) {
-        chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_COBBLESTONE);
-      } else {
-        chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_DIRT);
-        if ((x + z) % 2 === 0) {
-          chunkManager.setBlock(baseX + x, groundY + 1, baseZ + z, BLOCK_TALL_GRASS);
-        }
-      }
-    }
-  }
-
-  // Water irrigation
-  for (let z = 0; z < 6; z++) {
-    chunkManager.setBlock(baseX + 3, groundY - 1, baseZ + z, BLOCK_WATER);
-    chunkManager.setBlock(baseX + 3, groundY, baseZ + z, BLOCK_WATER);
-  }
-}
-
-function buildRedstoneDemo(baseX: number, baseZ: number) {
-  const groundY = getGroundHeight(baseX, baseZ);
-
-  // Platform
-  for (let x = 0; x < 5; x++) {
-    for (let z = 0; z < 3; z++) {
-      chunkManager.setBlock(baseX + x, groundY, baseZ + z, BLOCK_COBBLESTONE);
-    }
-  }
-
-  // Lever -> Redstone dust -> Lamp
-  chunkManager.setBlock(baseX + 0, groundY + 1, baseZ + 1, BLOCK_LEVER);
-  chunkManager.setBlock(baseX + 1, groundY + 1, baseZ + 1, BLOCK_REDSTONE_DUST);
-  chunkManager.setBlock(baseX + 2, groundY + 1, baseZ + 1, BLOCK_REDSTONE_DUST);
-  chunkManager.setBlock(baseX + 3, groundY + 1, baseZ + 1, BLOCK_REDSTONE_DUST);
-  chunkManager.setBlock(baseX + 4, groundY + 1, baseZ + 1, BLOCK_REDSTONE_LAMP);
-}
-
-function buildVillagePaths() {
-  // Build continuous paths connecting key locations
-  const connections = [
-    // Spawn to wooden house
-    { from: [0, 0], to: [-15, -8] },
-    // Spawn to brick house
-    { from: [0, 0], to: [12, -10] },
-    // Spawn to storage shed
-    { from: [0, 0], to: [-8, 15] },
-    // Spawn to stone tower
-    { from: [0, 0], to: [18, 12] },
-    // Spawn to farm plot
-    { from: [0, 0], to: [5, 25] },
+  const cornerPosts = [
+    [0, 0], [4, 0], [0, 4], [4, 4],
   ];
+  for (const [dx, dz] of cornerPosts) {
+    chunkManager.setBlock(buildingPoint.x + dx, groundY + 1, buildingPoint.z + dz, BLOCK_WOOD);
+    chunkManager.setBlock(buildingPoint.x + dx, groundY + 2, buildingPoint.z + dz, BLOCK_WOOD);
+  }
 
-  for (const { from, to } of connections) {
-    // Draw a continuous path between two points
-    const dx = to[0] - from[0];
-    const dz = to[1] - from[1];
+  for (let x = 1; x <= 3; x++) {
+    chunkManager.setBlock(buildingPoint.x + x, groundY + 1, buildingPoint.z, BLOCK_PLANKS);
+  }
+  for (let z = 1; z <= 2; z++) {
+    chunkManager.setBlock(buildingPoint.x, groundY + 1, buildingPoint.z + z, BLOCK_PLANKS);
+  }
+  for (let z = 2; z <= 4; z++) {
+    chunkManager.setBlock(buildingPoint.x + 4, groundY + 1, buildingPoint.z + z, BLOCK_PLANKS);
+  }
+  for (let x = 1; x <= 3; x++) {
+    chunkManager.setBlock(buildingPoint.x + x, groundY + 3, buildingPoint.z + 1, BLOCK_SLAB_WOOD);
+  }
+  chunkManager.setBlock(buildingPoint.x + 1, groundY + 1, buildingPoint.z + 1, BLOCK_WOOD);
+  chunkManager.setBlock(buildingPoint.x + 1, groundY + 2, buildingPoint.z + 1, BLOCK_WOOD);
+  chunkManager.setBlock(buildingPoint.x + 3, groundY + 1, buildingPoint.z + 3, BLOCK_WOOD);
+  chunkManager.setBlock(buildingPoint.x + 3, groundY + 2, buildingPoint.z + 3, BLOCK_WOOD);
+
+  chunkManager.setBlock(buildingPoint.x + 2, groundY + 1, buildingPoint.z + 2, BLOCK_CHEST);
+  chunkManager.setBlock(buildingPoint.x + 1, groundY + 1, buildingPoint.z + 4, BLOCK_BED);
+  chunkManager.setBlock(buildingPoint.x + 2, groundY + 1, buildingPoint.z + 4, BLOCK_BED);
+}
+
+function buildUtilityPoint() {
+  const { utilityPoint } = initialSceneLayout;
+  const groundY = getGroundHeight(utilityPoint.x, utilityPoint.z);
+
+  fillRect(utilityPoint.x, groundY, utilityPoint.z, 6, 5, BLOCK_COBBLESTONE);
+
+  for (let x = 0; x < 6; x++) {
+    chunkManager.setBlock(utilityPoint.x + x, groundY + 3, utilityPoint.z, BLOCK_SLAB_STONE);
+  }
+  for (let z = 0; z < 4; z++) {
+    chunkManager.setBlock(utilityPoint.x, groundY + 1, utilityPoint.z + z, BLOCK_BRICK);
+    chunkManager.setBlock(utilityPoint.x + 5, groundY + 1, utilityPoint.z + z, BLOCK_BRICK);
+  }
+
+  chunkManager.setBlock(utilityPoint.x + 1, groundY + 1, utilityPoint.z + 1, BLOCK_CRAFTING_TABLE);
+  chunkManager.setBlock(utilityPoint.x + 2, groundY + 1, utilityPoint.z + 1, BLOCK_FURNACE);
+  chunkManager.setBlock(utilityPoint.x + 4, groundY + 1, utilityPoint.z + 1, BLOCK_CHEST);
+
+  chunkManager.setBlock(utilityPoint.x + 1, groundY + 1, utilityPoint.z + 3, BLOCK_LEVER);
+  chunkManager.setBlock(utilityPoint.x + 2, groundY + 1, utilityPoint.z + 3, BLOCK_REDSTONE_DUST);
+  chunkManager.setBlock(utilityPoint.x + 3, groundY + 1, utilityPoint.z + 3, BLOCK_REDSTONE_DUST);
+  chunkManager.setBlock(utilityPoint.x + 4, groundY + 1, utilityPoint.z + 3, BLOCK_REDSTONE_LAMP);
+}
+
+function buildRewardPoint() {
+  const { rewardPoint } = initialSceneLayout;
+  const groundY = getGroundHeight(rewardPoint.x, rewardPoint.z);
+  const towerHeight = initialSceneLayout.rewardBeaconHeight;
+
+  for (let x = 0; x < 4; x++) {
+    for (let z = 0; z < 4; z++) {
+      chunkManager.setBlock(rewardPoint.x + x, groundY, rewardPoint.z + z, BLOCK_STONE);
+    }
+  }
+
+  for (let y = 1; y <= towerHeight; y++) {
+    chunkManager.setBlock(rewardPoint.x, groundY + y, rewardPoint.z, BLOCK_STONE);
+    chunkManager.setBlock(rewardPoint.x + 3, groundY + y, rewardPoint.z, BLOCK_STONE);
+    chunkManager.setBlock(rewardPoint.x, groundY + y, rewardPoint.z + 3, BLOCK_STONE);
+    chunkManager.setBlock(rewardPoint.x + 3, groundY + y, rewardPoint.z + 3, BLOCK_STONE);
+  }
+
+  for (let x = -1; x <= 4; x++) {
+    for (let z = -1; z <= 4; z++) {
+      if (x >= 0 && x <= 3 && z >= 0 && z <= 3) continue;
+      chunkManager.setBlock(rewardPoint.x + x, groundY + towerHeight + 1, rewardPoint.z + z, BLOCK_SLAB_STONE);
+    }
+  }
+
+  chunkManager.setBlock(rewardPoint.x + 1, groundY + towerHeight + 2, rewardPoint.z + 1, BLOCK_REDSTONE_LAMP);
+  chunkManager.setBlock(rewardPoint.x + 2, groundY + towerHeight + 2, rewardPoint.z + 1, BLOCK_REDSTONE_LAMP);
+  chunkManager.setBlock(rewardPoint.x + 1, groundY + towerHeight + 3, rewardPoint.z + 1, BLOCK_REDSTONE_LAMP);
+  chunkManager.setBlock(rewardPoint.x + 2, groundY + towerHeight + 3, rewardPoint.z + 1, BLOCK_REDSTONE_LAMP);
+  chunkManager.setBlock(rewardPoint.x + 1, groundY + towerHeight + 4, rewardPoint.z + 2, BLOCK_REDSTONE_LAMP);
+}
+
+function buildGuidedPaths() {
+  for (const { from, to } of initialSceneLayout.paths) {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
     const steps = Math.max(Math.abs(dx), Math.abs(dz));
 
     for (let i = 0; i <= steps; i++) {
-      const x = Math.floor(from[0] + (dx * i) / steps);
-      const z = Math.floor(from[1] + (dz * i) / steps);
+      const x = Math.floor(from.x + (dx * i) / steps);
+      const z = Math.floor(from.z + (dz * i) / steps);
       const pathY = getGroundHeight(x, z);
 
-      // Place 2x2 path blocks for stability
       chunkManager.setBlock(x, pathY, z, BLOCK_COBBLESTONE);
       chunkManager.setBlock(x + 1, pathY, z, BLOCK_COBBLESTONE);
-      chunkManager.setBlock(x, pathY, z + 1, BLOCK_COBBLESTONE);
-      chunkManager.setBlock(x + 1, pathY, z + 1, BLOCK_COBBLESTONE);
+      if ((i + x + z) % 5 === 0) {
+        chunkManager.setBlock(x, pathY + 1, z, BLOCK_FLOWER_YELLOW);
+      }
     }
   }
 }
 
 function addAmbientDetails() {
   const flowerAreas = [
-    [-18, -5], [-13, -10], [10, -5], [15, -12],
-    [-5, 18], [-10, 20], [20, 15], [22, 10],
+    [-10, 1], [4, 11], [14, -3], [-15, -10],
   ];
 
   for (const [fx, fz] of flowerAreas) {
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        const wx = fx + dx;
-        const wz = fz + dz;
-        const groundY = getGroundHeight(wx, wz);
-        if ((dx + dz) % 2 === 0) {
-          chunkManager.setBlock(wx, groundY + 1, wz, BLOCK_FLOWER_YELLOW);
-        } else {
-          chunkManager.setBlock(wx, groundY + 1, wz, BLOCK_FLOWER_RED);
-        }
-      }
-    }
+    const groundY = getGroundHeight(fx, fz);
+    chunkManager.setBlock(fx, groundY + 1, fz, BLOCK_FLOWER_RED);
+    chunkManager.setBlock(fx + 1, groundY + 1, fz, BLOCK_FLOWER_YELLOW);
   }
 
-  // Pond
-  const pondX = 30, pondZ = 20;
+  const pondX = 14;
+  const pondZ = 10;
   const pondY = getGroundHeight(pondX, pondZ);
-  for (let dx = 0; dx < 4; dx++) {
-    for (let dz = 0; dz < 4; dz++) {
+  for (let dx = 0; dx < 3; dx++) {
+    for (let dz = 0; dz < 3; dz++) {
       chunkManager.setBlock(pondX + dx, pondY, pondZ + dz, 0);
       chunkManager.setBlock(pondX + dx, pondY - 1, pondZ + dz, BLOCK_WATER);
     }
   }
 }
 
+function buildInitialScene() {
+  buildSpawnPlaza();
+  buildMaterialPoint();
+  buildBuildingPoint();
+  buildUtilityPoint();
+  buildRewardPoint();
+  buildGuidedPaths();
+  addAmbientDetails();
+  rebuildAffectedChunks();
+}
+
 function rebuildAffectedChunks() {
+  const points = [
+    initialSceneLayout.spawn,
+    initialSceneLayout.materialPoint,
+    initialSceneLayout.buildingPoint,
+    initialSceneLayout.utilityPoint,
+    initialSceneLayout.rewardPoint,
+  ];
+  const minX = Math.min(...points.map((point) => point.x)) - 12;
+  const maxX = Math.max(...points.map((point) => point.x)) + 12;
+  const minZ = Math.min(...points.map((point) => point.z)) - 12;
+  const maxZ = Math.max(...points.map((point) => point.z)) + 12;
+
   const affectedChunks = new Set<string>();
-  for (let x = -30; x <= 35; x++) {
-    for (let z = -15; z <= 30; z++) {
-      const cx = Math.floor(x / CHUNK_SIZE);
-      const cz = Math.floor(z / CHUNK_SIZE);
-      affectedChunks.add(`${cx},${cz}`);
+  for (let x = minX; x <= maxX; x++) {
+    for (let z = minZ; z <= maxZ; z++) {
+      affectedChunks.add(`${Math.floor(x / CHUNK_SIZE)},${Math.floor(z / CHUNK_SIZE)}`);
     }
   }
   for (const key of affectedChunks) {
@@ -394,20 +318,18 @@ function rebuildAffectedChunks() {
     if (chunk) vr.rebuildChunkMesh(chunk);
   }
 }
-// Find ground height at a given position
+// Find ground height at a given position (top solid block)
 function getGroundHeight(x: number, z: number): number {
-  let y = 30;
-  while (y > 0 && !chunkManager.isSolid(Math.floor(x), y - 1, Math.floor(z))) {
+  let y = CHUNK_HEIGHT - 1;
+  while (y > 0 && !chunkManager.isSolid(Math.floor(x), y, Math.floor(z))) {
     y--;
   }
-  return y;
+  return y + 1; // Return height above the top solid block
 }
 
 buildInitialScene();
 
-// Player
-const groundY = getGroundHeight(0, 0);
-let spawnPoint = { x: 0, y: groundY + 2, z: 0 };
+let spawnPoint = { x: initialSceneLayout.spawn.x, y: 10, z: initialSceneLayout.spawn.z };
 
 const player = new PlayerController(
   vr.camera,
@@ -898,12 +820,18 @@ let creativePanelVisible = false;
 function bindSettingsButton() {
   const btn = document.getElementById('settings-btn');
   if (!btn) return;
+  btn.addEventListener('keydown', (e) => {
+    if (shouldIgnoreSettingsButtonKeyboardActivation(e.code)) {
+      e.preventDefault();
+    }
+  });
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     creativePanelVisible = !creativePanelVisible;
     if (creativePanel) {
       creativePanel.style.display = creativePanelVisible ? 'block' : 'none';
     }
+    btn.blur();
   });
 }
 bindSettingsButton();

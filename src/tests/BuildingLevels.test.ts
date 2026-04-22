@@ -16,14 +16,15 @@ describe('LevelManager', () => {
 
   it('should progress through levels', () => {
     const lm = new LevelManager();
+
+    for (let i = 1; i < LEVELS.length; i++) {
+      lm.nextLevel();
+      expect(lm.currentLevel).toBe(i);
+      expect(lm.current?.title).toBe(LEVELS[i].title);
+    }
+
     lm.nextLevel();
-    expect(lm.currentLevel).toBe(1);
-    expect(lm.current?.title).toBe('小小高塔');
-    lm.nextLevel();
-    expect(lm.current?.title).toBe('小平台');
-    lm.nextLevel();
-    expect(lm.current?.title).toBe('小房子');
-    lm.nextLevel();
+
     expect(lm.isComplete()).toBe(true);
     expect(lm.current).toBeNull();
   });

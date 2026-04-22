@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ChunkManager } from '../engine/ChunkManager';
-import { BLOCK_STONE, BLOCK_GRASS } from '../blocks/BlockRegistry';
+import { BLOCK_STONE } from '../blocks/BlockRegistry';
 
 describe('ChunkManager', () => {
   it('should track player-placed blocks', () => {
@@ -23,12 +23,10 @@ describe('ChunkManager', () => {
 
     // Find a generated non-air block
     let foundY = -1;
-    let foundId = 0;
     for (let y = 0; y < 30; y++) {
       const id = cm.getBlock(0, y, 0);
       if (id !== 0) {
         foundY = y;
-        foundId = id;
         break;
       }
     }
@@ -41,5 +39,17 @@ describe('ChunkManager', () => {
     cm.setBlock(0, foundY + 10, 0, BLOCK_STONE);
     cm.markPlayerPlaced(0, foundY + 10, 0);
     expect(cm.isPlayerPlaced(0, foundY + 10, 0)).toBe(true);
+  });
+
+  it('should clear player-placed tracking when a block is removed', () => {
+    const cm = new ChunkManager(42);
+
+    cm.setBlock(2, 8, 3, BLOCK_STONE);
+    cm.markPlayerPlaced(2, 8, 3);
+    expect(cm.isPlayerPlaced(2, 8, 3)).toBe(true);
+
+    cm.setBlock(2, 8, 3, 0);
+
+    expect(cm.isPlayerPlaced(2, 8, 3)).toBe(false);
   });
 });
