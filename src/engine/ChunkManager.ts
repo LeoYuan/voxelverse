@@ -6,6 +6,8 @@ export class ChunkManager {
   private generator: WorldGenerator;
   /** Tracks coordinates of blocks placed by the player (not world-generated) */
   private playerPlaced = new Set<string>();
+  /** Tracks coordinates of generated blocks removed directly by the player. */
+  private playerRemoved = new Set<string>();
 
   constructor(seed = 12345) {
     this.generator = new WorldGenerator(seed);
@@ -13,10 +15,20 @@ export class ChunkManager {
 
   markPlayerPlaced(wx: number, wy: number, wz: number) {
     this.playerPlaced.add(`${wx},${wy},${wz}`);
+    this.playerRemoved.delete(`${wx},${wy},${wz}`);
   }
 
   isPlayerPlaced(wx: number, wy: number, wz: number): boolean {
     return this.playerPlaced.has(`${wx},${wy},${wz}`);
+  }
+
+  markPlayerRemoved(wx: number, wy: number, wz: number) {
+    this.playerRemoved.add(`${wx},${wy},${wz}`);
+    this.playerPlaced.delete(`${wx},${wy},${wz}`);
+  }
+
+  isPlayerRemoved(wx: number, wy: number, wz: number): boolean {
+    return this.playerRemoved.has(`${wx},${wy},${wz}`);
   }
 
   private key(cx: number, cz: number): string {
@@ -56,6 +68,9 @@ export class ChunkManager {
     chunk.setBlock(lx, wy, lz, id);
     if (id === 0) {
       this.playerPlaced.delete(`${wx},${wy},${wz}`);
+      this.playerRemoved.delete(`${wx},${wy},${wz}`);
+    } else {
+      this.playerRemoved.delete(`${wx},${wy},${wz}`);
     }
   }
 

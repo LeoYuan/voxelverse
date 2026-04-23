@@ -52,4 +52,31 @@ describe('ChunkManager', () => {
 
     expect(cm.isPlayerPlaced(2, 8, 3)).toBe(false);
   });
+
+  it('should track player-removed generated blocks separately', () => {
+    const cm = new ChunkManager(42);
+    cm.ensureChunk(0, 0);
+
+    let foundY = -1;
+    for (let y = 0; y < 30; y++) {
+      if (cm.getBlock(0, y, 0) !== 0) {
+        foundY = y;
+        break;
+      }
+    }
+
+    expect(foundY).toBeGreaterThanOrEqual(0);
+    expect(cm.isPlayerRemoved(0, foundY, 0)).toBe(false);
+
+    cm.setBlock(0, foundY, 0, 0);
+    cm.markPlayerRemoved(0, foundY, 0);
+
+    expect(cm.isPlayerRemoved(0, foundY, 0)).toBe(true);
+
+    cm.setBlock(0, foundY, 0, BLOCK_STONE);
+    cm.markPlayerPlaced(0, foundY, 0);
+
+    expect(cm.isPlayerRemoved(0, foundY, 0)).toBe(false);
+    expect(cm.isPlayerPlaced(0, foundY, 0)).toBe(true);
+  });
 });

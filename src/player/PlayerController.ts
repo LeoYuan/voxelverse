@@ -386,6 +386,9 @@ export class PlayerController {
     const blockId = this.chunkManager.getBlock(x, y, z);
     const selectedToolId = this.inventory.getSelectedBlockId();
     this.chunkManager.setBlock(x, y, z, 0);
+    if (blockId !== 0) {
+      this.chunkManager.markPlayerRemoved(x, y, z);
+    }
     this.onBlockChange(x, y, z);
     this.playSound('break');
 
@@ -781,6 +784,18 @@ export class PlayerController {
     this.pendingFallDamage = 0;
     this.onGround = false;
     this.isFlying = false;
+  }
+
+  lookAt(x: number, y: number, z: number) {
+    const dx = x - this.position.x;
+    const dy = y - (this.position.y + PLAYER_HEIGHT * 0.9);
+    const dz = z - this.position.z;
+    const horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+    this.yaw = Math.atan2(-dx, -dz);
+    this.pitch = Math.max(
+      -Math.PI / 2 + 0.01,
+      Math.min(Math.PI / 2 - 0.01, -Math.atan2(dy, Math.max(horizontalDistance, 0.001))),
+    );
   }
 
   private triggerArmSwing() {

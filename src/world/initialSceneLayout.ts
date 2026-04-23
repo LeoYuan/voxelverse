@@ -42,7 +42,7 @@ export function getInitialSceneLayout(): InitialSceneLayout {
     buildingPoint,
     utilityPoint,
     rewardPoint,
-    spawnLookTarget: materialPoint,
+    spawnLookTarget: rewardPoint,
     rewardBeaconHeight: 10,
     paths: [
       { from: spawn, to: materialPoint },

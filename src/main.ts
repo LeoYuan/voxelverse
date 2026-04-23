@@ -105,18 +105,20 @@ function buildSpawnPlaza() {
 
   const forwardX = Math.sign(spawnLookTarget.x - spawn.x);
   const forwardZ = Math.sign(spawnLookTarget.z - spawn.z);
+  const sideX = -forwardZ;
+  const sideZ = forwardX;
   for (let i = 1; i <= 4; i++) {
     chunkManager.setBlock(spawn.x + forwardX * i, baseY + 1, spawn.z + forwardZ * i, BLOCK_PLANKS);
   }
 
-  const archZ = spawn.z - 4;
-  for (let y = 1; y <= 3; y++) {
-    chunkManager.setBlock(spawn.x - 1, baseY + y, archZ, BLOCK_STONE);
-    chunkManager.setBlock(spawn.x + 1, baseY + y, archZ, BLOCK_STONE);
+  for (const offset of [-4, 4]) {
+    const pillarX = spawn.x + sideX * offset;
+    const pillarZ = spawn.z + sideZ * offset;
+    for (let y = 1; y <= 2; y++) {
+      chunkManager.setBlock(pillarX, baseY + y, pillarZ, BLOCK_STONE);
+    }
+    chunkManager.setBlock(pillarX, baseY + 3, pillarZ, BLOCK_REDSTONE_LAMP);
   }
-  chunkManager.setBlock(spawn.x, baseY + 4, archZ, BLOCK_SLAB_STONE);
-  chunkManager.setBlock(spawn.x - 1, baseY + 4, archZ, BLOCK_REDSTONE_LAMP);
-  chunkManager.setBlock(spawn.x + 1, baseY + 4, archZ, BLOCK_REDSTONE_LAMP);
 }
 
 function buildMaterialPoint() {
@@ -412,6 +414,7 @@ const player = new PlayerController(
 );
 
 player.position.y = spawnPoint.y;
+player.lookAt(spawnPoint.x + (initialSceneLayout.spawnLookTarget.x - initialSceneLayout.spawn.x), spawnPoint.y + 1, spawnPoint.z + (initialSceneLayout.spawnLookTarget.z - initialSceneLayout.spawn.z));
 
 // Default to creative mode for new players
 player.survivalMode = false;
@@ -563,9 +566,9 @@ function showStartMenu() {
                   <option value="4">5 - 更高的塔</option>
                   <option value="5">6 - 大平台</option>
                   <option value="6">7 - 石头房子</option>
-                  <option value="7">8 - 双层小楼</option>
+                  <option value="7">8 - 叠加平台</option>
                   <option value="8">9 - 围栏</option>
-                  <option value="9">10 - 桥梁</option>
+                  <option value="9">10 - 木栈道</option>
                   <option value="10">11 - 长廊</option>
                   <option value="11">12 - 观景台</option>
                   <option value="12">13 - 窗户房子</option>
@@ -787,11 +790,16 @@ function renderLevelPreview() {
   }
 
   const layout = getLevelPreviewLayout(targetBlocks);
-  levelPreview.innerHTML = layout.blocks
-    .map((block) => (
-      `<span class="level-preview-block" style="left:${block.left}px;top:${block.top}px;background:${block.color};z-index:${block.zIndex};"></span>`
-    ))
+  const polygons = [
+    ...layout.ground,
+    ...layout.leftFaces,
+    ...layout.rightFaces,
+    ...layout.topFaces,
+  ]
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .map((face) => `<polygon points="${face.points}" fill="${face.fill}" stroke="${face.stroke}" stroke-width="1" />`)
     .join('');
+  levelPreview.innerHTML = `<svg class="level-preview-svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" aria-hidden="true">${polygons}</svg>`;
   levelPreview.style.width = `${layout.width}px`;
   levelPreview.style.height = `${layout.height}px`;
   levelPreview.style.display = 'block';

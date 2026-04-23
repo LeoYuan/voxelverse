@@ -41,9 +41,9 @@ describe('InitialSceneLayout', () => {
     expect(layout.paths[4]).toEqual({ from: layout.rewardPoint, to: layout.spawn });
   });
 
-  it('aims the spawn view toward the first material destination', () => {
+  it('aims the spawn view toward the distant reward landmark for a wider first view', () => {
     const layout = getInitialSceneLayout();
-    expect(layout.spawnLookTarget).toEqual(layout.materialPoint);
+    expect(layout.spawnLookTarget).toEqual(layout.rewardPoint);
   });
 
   it('uses a tall reward beacon so the landmark stays readable from afar', () => {

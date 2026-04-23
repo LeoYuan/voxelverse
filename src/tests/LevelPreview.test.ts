@@ -6,11 +6,14 @@ describe('getLevelPreviewLayout', () => {
     expect(getLevelPreviewLayout([])).toEqual({
       width: 0,
       height: 0,
-      blocks: [],
+      topFaces: [],
+      leftFaces: [],
+      rightFaces: [],
+      ground: [],
     });
   });
 
-  it('normalizes block positions into a positive preview canvas', () => {
+  it('normalizes preview polygons into a positive canvas', () => {
     const layout = getLevelPreviewLayout([
       { x: 0, y: 0, z: 0, color: 0xff0000 },
       { x: 1, y: 0, z: 0, color: 0x00ff00 },
@@ -19,19 +22,36 @@ describe('getLevelPreviewLayout', () => {
 
     expect(layout.width).toBeGreaterThan(0);
     expect(layout.height).toBeGreaterThan(0);
-    for (const block of layout.blocks) {
-      expect(block.left).toBeGreaterThanOrEqual(0);
-      expect(block.top).toBeGreaterThanOrEqual(0);
+    for (const face of [...layout.topFaces, ...layout.leftFaces, ...layout.rightFaces, ...layout.ground]) {
+      for (const pair of face.points.split(' ')) {
+        const [x, y] = pair.split(',').map(Number);
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(y).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 
-  it('sorts deeper blocks behind later blocks for stable stacking', () => {
+  it('creates separate top and side faces for vertical structures', () => {
     const layout = getLevelPreviewLayout([
       { x: 0, y: 0, z: 0, color: 0xff0000 },
       { x: 0, y: 1, z: 0, color: 0x00ff00 },
       { x: 1, y: 0, z: 0, color: 0x0000ff },
     ]);
 
-    expect(layout.blocks.map((block) => block.zIndex)).toEqual([1, 2, 3]);
+    expect(layout.topFaces).toHaveLength(3);
+    expect(layout.leftFaces).toHaveLength(3);
+    expect(layout.rightFaces).toHaveLength(3);
+    expect(layout.ground.length).toBeGreaterThan(0);
+    expect(layout.height).toBeGreaterThan(layout.width / 2);
+  });
+
+  it('uses role metadata to render floor and wall blocks differently', () => {
+    const layout = getLevelPreviewLayout([
+      { x: 0, y: 0, z: 0, color: 0xb8864b, role: 'floor' },
+      { x: 0, y: 1, z: 0, color: 0xb8864b, role: 'wall' },
+    ]);
+
+    expect(layout.topFaces[0].fill).not.toBe(layout.topFaces[1].fill);
+    expect(layout.leftFaces[0].fill).not.toBe(layout.leftFaces[1].fill);
   });
 });

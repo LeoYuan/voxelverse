@@ -705,20 +705,20 @@ canvas {
 .level-preview {
   position: relative;
   flex: 0 0 auto;
-  min-width: 72px;
-  min-height: 52px;
+  min-width: 110px;
+  min-height: 88px;
   margin-left: 16px;
   border-left: 1px solid rgba(255, 255, 255, 0.14);
   padding-left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.level-preview-block {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
-  border-radius: 3px;
+.level-preview-svg {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
 }
 
 /* Enhanced Start Menu */
