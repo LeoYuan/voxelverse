@@ -12,7 +12,7 @@ import {
   BLOCK_FLOWER_YELLOW, BLOCK_FLOWER_RED, BLOCK_FURNACE,
   BLOCK_CHEST, BLOCK_BRICK, BLOCK_STONE, BLOCK_COAL_ORE,
   BLOCK_SLAB_STONE, BLOCK_TALL_GRASS, BLOCK_LEAVES,
-  BLOCK_DIRT,
+  BLOCK_DIRT, BLOCK_COOKED_BEEF,
   BlockRegistry, type BlockCategory
 } from './blocks/BlockRegistry';
 import { RedstoneEngine } from './redstone/RedstoneEngine';
@@ -22,6 +22,7 @@ import { Skeleton } from './entities/Skeleton';
 import { Creeper } from './entities/Creeper';
 import { Cow } from './entities/Cow';
 import { Crafting } from './crafting/CraftingRegistry';
+import { FurnaceRegistry, FurnaceState } from './crafting/FurnaceRegistry';
 import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
 import { getLevelPreviewLayout } from './tutorial/levelPreview';
 import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
@@ -383,6 +384,9 @@ const player = new PlayerController(
     if (blockId === BLOCK_BUTTON) {
       redstoneEngine.pressButton(x, y, z);
     }
+    if (blockId === BLOCK_FURNACE) {
+      openFurnaceUI(x, y, z);
+    }
   },
   (blockId) => {
     // In survival mode, add to inventory
@@ -409,6 +413,7 @@ const player = new PlayerController(
     // Creative mode: just consume food directly
     if (blockId === 30) { playerStats.eat(2); }
     if (blockId === 31) { playerStats.eat(5); }
+    if (blockId === BLOCK_COOKED_BEEF) { playerStats.eat(8); }
     return true;
   }
 );
@@ -1015,6 +1020,10 @@ document.addEventListener('keydown', (e) => {
       playerStats.eat(5);
       player.inventory.removeFromSlot(player.inventory.selectedSlot, 1);
       updateHotbarUI();
+    } else if (slot.blockId === BLOCK_COOKED_BEEF) {
+      playerStats.eat(8);
+      player.inventory.removeFromSlot(player.inventory.selectedSlot, 1);
+      updateHotbarUI();
     }
   }
 
@@ -1163,7 +1172,146 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && craftingOpen) {
     toggleCraftingUI();
   }
+  if (e.code === 'Escape' && furnaceOpen) {
+    closeFurnaceUI();
+  }
 });
+
+// Furnace UI
+let furnaceOpen = false;
+let activeFurnaceKey: string | null = null;
+const furnaceStates = new Map<string, FurnaceState>();
+let furnaceTickAccum = 0;
+
+function furnaceKey(x: number, y: number, z: number): string {
+  return `${x},${y},${z}`;
+}
+
+function getFurnaceState(x: number, y: number, z: number): FurnaceState {
+  const key = furnaceKey(x, y, z);
+  let state = furnaceStates.get(key);
+  if (!state) {
+    state = new FurnaceState();
+    furnaceStates.set(key, state);
+  }
+  return state;
+}
+
+function openFurnaceUI(x: number, y: number, z: number) {
+  const existing = document.querySelector('.furnace-overlay');
+  if (existing) existing.remove();
+  getFurnaceState(x, y, z);
+  furnaceOpen = true;
+  activeFurnaceKey = furnaceKey(x, y, z);
+  document.exitPointerLock();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'furnace-overlay';
+  overlay.innerHTML = `
+    <div class="furnace-panel">
+      <h3>熔炉</h3>
+      <div class="furnace-grid">
+        <div>
+          <div class="furnace-label">输入</div>
+          <div class="furnace-slot" id="furnace-input"></div>
+        </div>
+        <div class="furnace-status">
+          <div id="furnace-progress">未加热</div>
+          <div class="furnace-arrow">→</div>
+          <div id="furnace-burn">燃料 0</div>
+        </div>
+        <div>
+          <div class="furnace-label">输出</div>
+          <div class="furnace-slot" id="furnace-output"></div>
+        </div>
+        <div>
+          <div class="furnace-label">燃料</div>
+          <div class="furnace-slot" id="furnace-fuel"></div>
+        </div>
+      </div>
+      <p class="furnace-hint">选中快捷栏物品后点击输入/燃料槽放入 1 个；点击输出取回 | ESC 关闭</p>
+    </div>
+  `;
+  container.appendChild(overlay);
+
+  document.getElementById('furnace-input')!.addEventListener('click', () => placeSelectedInFurnaceSlot('input'));
+  document.getElementById('furnace-fuel')!.addEventListener('click', () => placeSelectedInFurnaceSlot('fuel'));
+  document.getElementById('furnace-output')!.addEventListener('click', takeFurnaceOutput);
+  renderFurnaceUI();
+}
+
+function closeFurnaceUI() {
+  document.querySelector('.furnace-overlay')?.remove();
+  furnaceOpen = false;
+  activeFurnaceKey = null;
+  document.body.requestPointerLock();
+}
+
+function placeSelectedInFurnaceSlot(slotType: 'input' | 'fuel') {
+  if (!activeFurnaceKey) return;
+  const selected = player.inventory.slots[player.inventory.selectedSlot];
+  if (selected.blockId === 0 || selected.count <= 0) return;
+
+  const state = furnaceStates.get(activeFurnaceKey);
+  if (!state) return;
+  const snapshot = state.snapshot();
+
+  if (slotType === 'input') {
+    if (snapshot.inputId !== 0 && snapshot.inputId !== selected.blockId) return;
+    state.setInput(selected.blockId, snapshot.inputCount + 1);
+  } else {
+    if (!FurnaceRegistry.getFuel(selected.blockId)) return;
+    if (snapshot.fuelId !== 0 && snapshot.fuelId !== selected.blockId) return;
+    state.setFuel(selected.blockId, snapshot.fuelCount + 1);
+  }
+
+  player.inventory.removeFromSlot(player.inventory.selectedSlot, 1);
+  updateHotbarUI();
+  renderFurnaceUI();
+}
+
+function takeFurnaceOutput() {
+  if (!activeFurnaceKey) return;
+  const state = furnaceStates.get(activeFurnaceKey);
+  if (!state) return;
+  const output = state.takeOutput();
+  if (!output) return;
+  const overflow = player.inventory.addItem(output.itemId, output.count);
+  if (overflow > 0) {
+    const current = state.snapshot();
+    state.setInput(current.inputId, current.inputCount);
+    furnaceStates.set(activeFurnaceKey, new FurnaceState({ ...current, outputId: output.itemId, outputCount: overflow }));
+  }
+  updateHotbarUI();
+  renderFurnaceUI();
+}
+
+function renderFurnaceUI() {
+  if (!activeFurnaceKey) return;
+  const state = furnaceStates.get(activeFurnaceKey);
+  if (!state) return;
+  const snapshot = state.snapshot();
+  renderFurnaceSlot('furnace-input', snapshot.inputId, snapshot.inputCount);
+  renderFurnaceSlot('furnace-fuel', snapshot.fuelId, snapshot.fuelCount);
+  renderFurnaceSlot('furnace-output', snapshot.outputId, snapshot.outputCount);
+
+  const recipe = FurnaceRegistry.getRecipe(snapshot.inputId);
+  const progress = document.getElementById('furnace-progress');
+  if (progress) {
+    progress.textContent = recipe ? `进度 ${snapshot.cookTicks}/${recipe.cookTicks}` : '无可熔炼输入';
+  }
+  const burn = document.getElementById('furnace-burn');
+  if (burn) burn.textContent = `燃料 ${snapshot.burnTicksRemaining}`;
+}
+
+function renderFurnaceSlot(id: string, itemId: number, count: number) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const def = itemId !== 0 ? BlockRegistry.getById(itemId) : null;
+  el.style.background = def ? '#' + def.color.toString(16).padStart(6, '0') : 'rgba(255,255,255,0.1)';
+  el.innerHTML = def ? `<span class="cs-name">${def.name}</span><span class="cs-count">${count}</span>` : '';
+  el.title = def?.name ?? '';
+}
 
 // Mobs
 const zombies: Zombie[] = [];
@@ -1473,6 +1621,15 @@ function loop() {
     }
 
     player.update(dt);
+
+    furnaceTickAccum += dt;
+    while (furnaceTickAccum >= 1) {
+      furnaceTickAccum -= 1;
+      for (const state of furnaceStates.values()) {
+        state.tick();
+      }
+      if (furnaceOpen) renderFurnaceUI();
+    }
 
     // Check tutorial level completion (only in creative mode)
     if (!player.survivalMode && !levelManager.isComplete() && levelCompletePopup.style.display === 'none') {

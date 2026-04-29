@@ -75,6 +75,9 @@ export const BLOCK_WATER = 28;
 // Food / items
 export const BLOCK_ROTTEN_FLESH = 30;
 export const BLOCK_RAW_BEEF = 31;
+export const BLOCK_IRON_INGOT = 48;
+export const BLOCK_GOLD_INGOT = 49;
+export const BLOCK_COOKED_BEEF = 50;
 
 // Redstone components
 export const BLOCK_REDSTONE_DUST = 32;
@@ -142,6 +145,9 @@ const BLOCKS: BlockDefinition[] = [
   // Food / items
   { id: BLOCK_ROTTEN_FLESH, key: 'rotten_flesh', name: '腐肉', color: 0x6b4c35, hardness: 0, transparent: true, solid: false, category: 'food' },
   { id: BLOCK_RAW_BEEF, key: 'raw_beef', name: '生牛肉', color: 0xb71c1c, hardness: 0, transparent: true, solid: false, category: 'food' },
+  { id: BLOCK_IRON_INGOT, key: 'iron_ingot', name: '铁锭', color: 0xd8d8d8, hardness: 0, transparent: true, solid: false, category: 'ore' },
+  { id: BLOCK_GOLD_INGOT, key: 'gold_ingot', name: '金锭', color: 0xffd34d, hardness: 0, transparent: true, solid: false, category: 'ore' },
+  { id: BLOCK_COOKED_BEEF, key: 'cooked_beef', name: '熟牛肉', color: 0x7a2f1b, hardness: 0, transparent: true, solid: false, category: 'food' },
 
   // Redstone components
   { id: BLOCK_REDSTONE_DUST, key: 'redstone_dust', name: '红石粉', color: 0x8b0000, hardness: 0, transparent: true, solid: false, category: 'redstone' },

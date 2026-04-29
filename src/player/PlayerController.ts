@@ -281,7 +281,7 @@ export class PlayerController {
       if (hit) {
         const blockId = this.chunkManager.getBlock(hit.pos.x, hit.pos.y, hit.pos.z);
         const def = BlockRegistry.getById(blockId);
-        if ((def.key === 'bed' || def.key === 'lever' || def.key === 'button') && this.onInteract) {
+        if ((def.key === 'bed' || def.key === 'lever' || def.key === 'button' || def.key === 'furnace') && this.onInteract) {
           this.onInteract(hit.pos.x, hit.pos.y, hit.pos.z, blockId);
           return;
         }
