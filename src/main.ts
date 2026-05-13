@@ -29,6 +29,12 @@ import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBeha
 import { getInitialSceneLayout } from './world/initialSceneLayout';
 import { WorldSaveStore } from './persistence/WorldSaveStore';
 import { WORLD_SAVE_VERSION, type FurnaceSaveState, type WorldSave } from './persistence/WorldSave';
+import {
+  toBinary8,
+  traceArithmetic,
+  type ArithmeticOperation,
+  type ArithmeticTrace,
+} from './creative/ArithmeticVisualizer';
 import './style.css';
 
 const container = document.getElementById('app')!;
@@ -496,7 +502,34 @@ ui.innerHTML = `
       <div class="creative-tab" data-cat="tools">工具</div>
       <div class="creative-tab" data-cat="food">食物</div>
     </div>
+    <div class="creative-tools">
+      <button class="creative-tool-btn" id="arithmetic-toggle" type="button">ALU</button>
+    </div>
     <div class="creative-grid"></div>
+    <div class="arithmetic-panel" id="arithmetic-panel" style="display: none;">
+      <div class="arithmetic-header">
+        <span>8 位四则运算</span>
+        <span class="arithmetic-step-count" id="arithmetic-step-count">0/0</span>
+      </div>
+      <div class="arithmetic-controls">
+        <label>A<input id="arithmetic-input-a" type="number" min="0" max="255" value="200" /></label>
+        <label>B<input id="arithmetic-input-b" type="number" min="0" max="255" value="12" /></label>
+      </div>
+      <div class="arithmetic-ops" role="group" aria-label="operation">
+        <button class="arithmetic-op active" type="button" data-op="add">+</button>
+        <button class="arithmetic-op" type="button" data-op="sub">-</button>
+        <button class="arithmetic-op" type="button" data-op="mul">x</button>
+        <button class="arithmetic-op" type="button" data-op="div">/</button>
+      </div>
+      <div class="arithmetic-lanes" id="arithmetic-lanes"></div>
+      <div class="arithmetic-status" id="arithmetic-status"></div>
+      <div class="arithmetic-step-note" id="arithmetic-step-note"></div>
+      <div class="arithmetic-step-controls">
+        <button id="arithmetic-prev" type="button">上一步</button>
+        <button id="arithmetic-next" type="button">下一步</button>
+        <button id="arithmetic-reset" type="button">重置</button>
+      </div>
+    </div>
   </div>
   <div class="hotbar" id="hotbar">
     <div class="slot active" data-idx="0"><div class="slot-color" style="background:#6dbf35"></div><span class="slot-name">草方块</span></div>
@@ -967,6 +1000,9 @@ function setupCreativeUI() {
   if (creativePanel) {
     creativePanel.style.display = player.survivalMode ? 'none' : (creativePanelVisible ? 'block' : 'none');
   }
+  if (arithmeticPanel) {
+    arithmeticPanel.style.display = player.survivalMode || !arithmeticVisible ? 'none' : 'block';
+  }
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) {
     settingsBtn.style.display = player.survivalMode ? 'none' : 'block';
@@ -1060,10 +1096,22 @@ const deathScreen = ui.querySelector('.death-screen') as HTMLElement;
 const hotbarEl = ui.querySelector('#hotbar') as HTMLElement;
 const creativePanel = ui.querySelector('.creative-panel') as HTMLElement;
 const creativeGrid = ui.querySelector('.creative-grid') as HTMLElement;
+const arithmeticToggle = ui.querySelector('#arithmetic-toggle') as HTMLButtonElement;
+const arithmeticPanel = ui.querySelector('#arithmetic-panel') as HTMLElement;
+const arithmeticInputA = ui.querySelector('#arithmetic-input-a') as HTMLInputElement;
+const arithmeticInputB = ui.querySelector('#arithmetic-input-b') as HTMLInputElement;
+const arithmeticLanes = ui.querySelector('#arithmetic-lanes') as HTMLElement;
+const arithmeticStatus = ui.querySelector('#arithmetic-status') as HTMLElement;
+const arithmeticStepNote = ui.querySelector('#arithmetic-step-note') as HTMLElement;
+const arithmeticStepCount = ui.querySelector('#arithmetic-step-count') as HTMLElement;
 
 let isDead = false;
 let creativeTab: BlockCategory = 'natural';
 let creativePanelVisible = false;
+let arithmeticVisible = false;
+let arithmeticOperation: ArithmeticOperation = 'add';
+let arithmeticTrace: ArithmeticTrace = traceArithmetic(arithmeticOperation, 200, 12);
+let arithmeticStepIndex = 0;
 
 // Settings button toggle — bind directly to avoid global click conflicts
 function bindSettingsButton() {
@@ -1149,6 +1197,99 @@ function renderCreativeGrid() {
   }
 }
 
+function renderBitLane(label: string, value: number, activeMask = 0): string {
+  const bits = toBinary8(value);
+  const cells = bits
+    .split('')
+    .map((bit, index) => {
+      const bitIndex = 7 - index;
+      const active = ((activeMask >> bitIndex) & 1) === 1 ? ' active' : '';
+      return `<span class="bit-cell${active}">${bit}</span>`;
+    })
+    .join('');
+  return `<div class="bit-lane"><span class="bit-label">${label}</span><div class="bit-cells">${cells}</div><span class="bit-value">${value & 0xff}</span></div>`;
+}
+
+function updateArithmeticTrace(resetStep = true) {
+  arithmeticTrace = traceArithmetic(
+    arithmeticOperation,
+    Number(arithmeticInputA.value),
+    Number(arithmeticInputB.value),
+  );
+  if (resetStep) {
+    arithmeticStepIndex = 0;
+  }
+  arithmeticStepIndex = Math.min(arithmeticStepIndex, Math.max(0, arithmeticTrace.steps.length - 1));
+  renderArithmeticPanel();
+}
+
+function renderArithmeticPanel() {
+  const step = arithmeticTrace.steps[arithmeticStepIndex] ?? arithmeticTrace.steps[0];
+  const activeMask = step?.label.match(/bit (\d+)/)?.[1];
+  const activeBit = activeMask === undefined ? 0 : 1 << Number(activeMask);
+  const partial = step?.partial ?? 0;
+
+  arithmeticLanes.innerHTML = [
+    renderBitLane('A', arithmeticTrace.a, activeBit),
+    renderBitLane('B', arithmeticTrace.b, activeBit),
+    renderBitLane('P', partial, activeBit),
+    renderBitLane('R', step?.result ?? arithmeticTrace.result, activeBit),
+  ].join('');
+
+  const flags = [
+    arithmeticTrace.overflow ? 'overflow' : '',
+    arithmeticTrace.divideByZero ? 'divide-by-zero' : '',
+  ].filter(Boolean);
+  arithmeticStatus.textContent = `结果 ${arithmeticTrace.result} / ${toBinary8(arithmeticTrace.result)}${flags.length > 0 ? ` / ${flags.join(', ')}` : ''}`;
+  arithmeticStepNote.textContent = step ? `${step.label}: ${step.note}` : '';
+  arithmeticStepCount.textContent = `${arithmeticStepIndex + 1}/${arithmeticTrace.steps.length}`;
+
+  ui.querySelectorAll('.arithmetic-op').forEach((button) => {
+    button.classList.toggle('active', (button as HTMLElement).dataset.op === arithmeticOperation);
+  });
+}
+
+function setArithmeticPanelVisible(visible: boolean) {
+  arithmeticVisible = visible;
+  arithmeticPanel.style.display = arithmeticVisible ? 'block' : 'none';
+  arithmeticToggle.classList.toggle('active', arithmeticVisible);
+  if (arithmeticVisible) {
+    renderArithmeticPanel();
+  }
+}
+
+function setupArithmeticUI() {
+  arithmeticToggle.addEventListener('click', () => {
+    setArithmeticPanelVisible(!arithmeticVisible);
+  });
+
+  ui.querySelectorAll('.arithmetic-op').forEach((button) => {
+    button.addEventListener('click', () => {
+      arithmeticOperation = (button as HTMLElement).dataset.op as ArithmeticOperation;
+      updateArithmeticTrace(true);
+    });
+  });
+
+  [arithmeticInputA, arithmeticInputB].forEach((input) => {
+    input.addEventListener('input', () => updateArithmeticTrace(true));
+  });
+
+  document.getElementById('arithmetic-prev')?.addEventListener('click', () => {
+    arithmeticStepIndex = Math.max(0, arithmeticStepIndex - 1);
+    renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-next')?.addEventListener('click', () => {
+    arithmeticStepIndex = Math.min(arithmeticTrace.steps.length - 1, arithmeticStepIndex + 1);
+    renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-reset')?.addEventListener('click', () => {
+    arithmeticStepIndex = 0;
+    renderArithmeticPanel();
+  });
+
+  updateArithmeticTrace(true);
+}
+
 // Creative tab switching
 ui.querySelectorAll('.creative-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -1164,6 +1305,7 @@ ui.querySelectorAll('.creative-tab').forEach(tab => {
 
 // Initial creative grid render
 renderCreativeGrid();
+setupArithmeticUI();
 
 // Click hotbar slots to switch selection
 hotbarEl.querySelectorAll('.slot').forEach(slotEl => {
@@ -2029,5 +2171,25 @@ if (import.meta.env.DEV) {
     updateLevelUI: () => {
       updateLevelUI();
     },
+    setArithmeticInputs: (a: number, b: number) => {
+      arithmeticInputA.value = String(a);
+      arithmeticInputB.value = String(b);
+      updateArithmeticTrace(true);
+    },
+    setArithmeticOperation: (operation: ArithmeticOperation) => {
+      arithmeticOperation = operation;
+      updateArithmeticTrace(true);
+    },
+    setArithmeticStep: (index: number) => {
+      arithmeticStepIndex = Math.max(0, Math.min(arithmeticTrace.steps.length - 1, Math.trunc(index)));
+      renderArithmeticPanel();
+    },
+    getArithmeticTraceState: () => ({
+      trace: arithmeticTrace,
+      stepIndex: arithmeticStepIndex,
+      status: arithmeticStatus.textContent ?? '',
+      note: arithmeticStepNote.textContent ?? '',
+      lanes: arithmeticLanes.textContent ?? '',
+    }),
   };
 }

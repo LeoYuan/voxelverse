@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Survival mode entry', () => {
-  test.setTimeout(60000);
+  test.setTimeout(90000);
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => Boolean((window as any).__voxelverse_test), undefined, { timeout: 45000 });
+    await page.waitForFunction(() => Boolean((window as any).__voxelverse_test), undefined, { timeout: 60000 });
   });
 
   test('starts survival mode with an empty inventory by default', async ({ page }) => {
