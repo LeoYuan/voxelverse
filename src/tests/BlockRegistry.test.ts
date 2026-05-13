@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { BlockRegistry, BLOCK_AIR, BLOCK_GRASS, BLOCK_STONE } from '../blocks/BlockRegistry';
+import {
+  BLOCK_AIR,
+  BLOCK_ALU_INPUT_ON,
+  BLOCK_ALU_OUTPUT_ON,
+  BLOCK_GRASS,
+  BLOCK_STONE,
+  BlockRegistry,
+} from '../blocks/BlockRegistry';
 
 describe('BlockRegistry', () => {
   it('should return air for id 0', () => {
@@ -29,5 +36,14 @@ describe('BlockRegistry', () => {
   it('should return all registered blocks', () => {
     const all = BlockRegistry.getAll();
     expect(all.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('registers creative ALU redstone components', () => {
+    const input = BlockRegistry.getById(BLOCK_ALU_INPUT_ON);
+    const output = BlockRegistry.getById(BLOCK_ALU_OUTPUT_ON);
+
+    expect(input.category).toBe('redstone');
+    expect(input.lightLevel).toBeGreaterThan(0);
+    expect(output.key).toBe('alu_output_on');
   });
 });

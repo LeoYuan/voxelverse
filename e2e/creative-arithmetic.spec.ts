@@ -21,6 +21,10 @@ test.describe('Creative arithmetic visualizer', () => {
       w.setArithmeticOperation('add');
       const addition = w.getArithmeticTraceState();
 
+      w.setPlayerPos(0, 12, 0);
+      w.buildArithmeticComponents();
+      const outputBits = Array.from({ length: 8 }, (_, index) => w.chunkManager.getBlock(3 + index, 11, 9));
+
       return {
         divisionResult: division.trace.result,
         divisionStatus: division.status,
@@ -28,6 +32,7 @@ test.describe('Creative arithmetic visualizer', () => {
         additionResult: addition.trace.result,
         additionOverflow: addition.trace.overflow,
         additionStatus: addition.status,
+        outputBits,
       };
     });
 
@@ -37,5 +42,6 @@ test.describe('Creative arithmetic visualizer', () => {
     expect(result.additionResult).toBe(4);
     expect(result.additionOverflow).toBe(true);
     expect(result.additionStatus).toContain('overflow');
+    expect(result.outputBits.filter((blockId: number) => blockId === 54)).toHaveLength(1);
   });
 });

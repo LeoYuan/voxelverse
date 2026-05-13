@@ -35,6 +35,7 @@ import {
   type ArithmeticOperation,
   type ArithmeticTrace,
 } from './creative/ArithmeticVisualizer';
+import { buildArithmeticComponentLayout } from './creative/ArithmeticComponentBuilder';
 import './style.css';
 
 const container = document.getElementById('app')!;
@@ -528,6 +529,7 @@ ui.innerHTML = `
         <button id="arithmetic-prev" type="button">上一步</button>
         <button id="arithmetic-next" type="button">下一步</button>
         <button id="arithmetic-reset" type="button">重置</button>
+        <button id="arithmetic-build" type="button">生成组件</button>
       </div>
     </div>
   </div>
@@ -1258,6 +1260,33 @@ function setArithmeticPanelVisible(visible: boolean) {
   }
 }
 
+function placeArithmeticComponents() {
+  updateArithmeticTrace(false);
+  const origin = {
+    x: Math.floor(player.position.x) + 3,
+    y: Math.max(2, Math.floor(player.position.y) - 1),
+    z: Math.floor(player.position.z) + 3,
+  };
+  const layout = buildArithmeticComponentLayout(arithmeticTrace, arithmeticOperation, origin);
+  const touchedChunks = new Set<string>();
+
+  for (const block of layout.blocks) {
+    chunkManager.setBlock(block.x, block.y, block.z, block.blockId);
+    chunkManager.markPlayerPlaced(block.x, block.y, block.z);
+    touchedChunks.add(`${Math.floor(block.x / CHUNK_SIZE)},${Math.floor(block.z / CHUNK_SIZE)}`);
+  }
+
+  for (const key of touchedChunks) {
+    const [cx, cz] = key.split(',').map(Number);
+    const chunk = chunkManager.getChunk(cx, cz);
+    if (chunk) {
+      vr.rebuildChunkMesh(chunk);
+    }
+  }
+
+  showToast(`已生成 8 位 ALU 组件：${arithmeticTrace.result} / ${toBinary8(arithmeticTrace.result)}`);
+}
+
 function setupArithmeticUI() {
   arithmeticToggle.addEventListener('click', () => {
     setArithmeticPanelVisible(!arithmeticVisible);
@@ -1285,6 +1314,9 @@ function setupArithmeticUI() {
   document.getElementById('arithmetic-reset')?.addEventListener('click', () => {
     arithmeticStepIndex = 0;
     renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-build')?.addEventListener('click', () => {
+    placeArithmeticComponents();
   });
 
   updateArithmeticTrace(true);
@@ -2183,6 +2215,9 @@ if (import.meta.env.DEV) {
     setArithmeticStep: (index: number) => {
       arithmeticStepIndex = Math.max(0, Math.min(arithmeticTrace.steps.length - 1, Math.trunc(index)));
       renderArithmeticPanel();
+    },
+    buildArithmeticComponents: () => {
+      placeArithmeticComponents();
     },
     getArithmeticTraceState: () => ({
       trace: arithmeticTrace,
