@@ -147,13 +147,14 @@ export class PlayerController {
       this.isPointerLocked = document.pointerLockElement === document.body;
       const hint = document.getElementById('pointer-lock-hint');
       if (hint) {
-        hint.style.display = this.isPointerLocked ? 'none' : 'block';
+        const startMenuVisible = Boolean(document.querySelector('.start-menu'));
+        hint.style.display = !startMenuVisible && !this.isPointerLocked ? 'block' : 'none';
       }
     });
 
     // Press Enter to enter pointer lock (instead of clicking)
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Enter' && !this.isPointerLocked) {
+      if (e.code === 'Enter' && !this.isPointerLocked && !document.querySelector('.start-menu')) {
         document.body.requestPointerLock();
       }
     });

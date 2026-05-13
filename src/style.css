@@ -453,6 +453,13 @@ canvas {
   color: #fff;
 }
 
+.creative-tool-hint {
+  margin: -2px 0 8px;
+  color: #bfc7d5;
+  font-size: 11px;
+  text-align: right;
+}
+
 .arithmetic-panel {
   margin-top: 10px;
   padding-top: 10px;

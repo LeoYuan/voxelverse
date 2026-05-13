@@ -29,6 +29,7 @@ import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBeha
 import { getInitialSceneLayout } from './world/initialSceneLayout';
 import { WorldSaveStore } from './persistence/WorldSaveStore';
 import { WORLD_SAVE_VERSION, type FurnaceSaveState, type WorldSave } from './persistence/WorldSave';
+import { getSharedSoundEffects } from './player/soundEffects';
 import {
   toBinary8,
   traceArithmetic,
@@ -53,6 +54,10 @@ const chunkManager = new ChunkManager(42);
 const WORLD_SEED = 42;
 const saveStore = new WorldSaveStore();
 let playTimeSeconds = 0;
+const soundEffects = getSharedSoundEffects();
+const LEVEL_PROGRESS_KEY = 'voxelverse-current-level';
+const SOUND_ENABLED_KEY = 'voxelverse-sound-enabled';
+const VOLUME_KEY = 'voxelverse-volume';
 
 // Redstone engine
 const redstoneEngine = new RedstoneEngine();
@@ -483,6 +488,36 @@ function showToast(message: string) {
   setTimeout(() => msg.remove(), 1400);
 }
 
+function getPointerLockHint() {
+  return document.getElementById('pointer-lock-hint') as HTMLElement | null;
+}
+
+function updatePointerLockHint() {
+  const hint = getPointerLockHint();
+  if (!hint) return;
+  hint.style.display = !startMenuVisible && document.pointerLockElement !== document.body ? 'block' : 'none';
+}
+
+function persistLevelProgress() {
+  if (!levelManager.skipped) {
+    localStorage.setItem(LEVEL_PROGRESS_KEY, String(levelManager.currentLevel));
+  }
+}
+
+function readSavedLevelProgress() {
+  const saved = Number(localStorage.getItem(LEVEL_PROGRESS_KEY));
+  if (!Number.isInteger(saved)) return 0;
+  return Math.max(0, Math.min(LEVELS.length - 1, saved));
+}
+
+function applySoundSettings(soundEnabled: boolean, volumePercent: number) {
+  const clampedVolume = Math.max(0, Math.min(100, Math.trunc(volumePercent)));
+  soundEffects.setMuted(!soundEnabled);
+  soundEffects.setVolume(clampedVolume / 100);
+  localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? '1' : '0');
+  localStorage.setItem(VOLUME_KEY, String(clampedVolume));
+}
+
 // Player stats
 const playerStats = new PlayerStats();
 
@@ -506,6 +541,7 @@ ui.innerHTML = `
     <div class="creative-tools">
       <button class="creative-tool-btn" id="arithmetic-toggle" type="button">ALU</button>
     </div>
+    <div class="creative-tool-hint">ALU：8 位四则运算与红石组件生成</div>
     <div class="creative-grid"></div>
     <div class="arithmetic-panel" id="arithmetic-panel" style="display: none;">
       <div class="arithmetic-header">
@@ -596,6 +632,7 @@ function showStartMenu() {
   if (startMenu) return; // Already visible
   startMenuVisible = true;
   document.exitPointerLock();
+  updatePointerLockHint();
   startMenu = document.createElement('div');
   startMenu.className = 'start-menu';
   startMenu.innerHTML = `
@@ -743,10 +780,14 @@ function showStartMenu() {
 
   // State
   let selectedMode = 'challenge';
-  let selectedStartLevel = 0;
+  let selectedStartLevel = readSavedLevelProgress();
   let useSurvivalStarterKit = false;
   const menu = startMenu!;
   void renderSaveSlots();
+  const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
+  if (levelSelect) {
+    levelSelect.value = String(selectedStartLevel);
+  }
 
   // Tab switching
   menu.querySelectorAll('.start-tab').forEach(tab => {
@@ -769,7 +810,6 @@ function showStartMenu() {
   });
 
   // Level selection dropdown (for challenge mode)
-  const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
   if (levelSelect) {
     levelSelect.addEventListener('change', () => {
       selectedStartLevel = parseInt(levelSelect.value);
@@ -787,6 +827,7 @@ function showStartMenu() {
     menu.remove();
     startMenuVisible = false;
     startMenu = null;
+    updatePointerLockHint();
 
     applyGameMode(selectedMode, selectedStartLevel, useSurvivalStarterKit);
     setupCreativeUI();
@@ -809,6 +850,17 @@ function showStartMenu() {
   if (savedSens) sensInput.value = savedSens;
   sensInput.addEventListener('change', () => {
     localStorage.setItem('voxelverse-sensitivity', sensInput.value);
+  });
+  const soundInput = menu.querySelector('#sound-enabled') as HTMLInputElement;
+  const volumeInput = menu.querySelector('#volume') as HTMLInputElement;
+  soundInput.checked = localStorage.getItem(SOUND_ENABLED_KEY) !== '0';
+  volumeInput.value = localStorage.getItem(VOLUME_KEY) ?? '80';
+  applySoundSettings(soundInput.checked, Number(volumeInput.value));
+  soundInput.addEventListener('change', () => {
+    applySoundSettings(soundInput.checked, Number(volumeInput.value));
+  });
+  volumeInput.addEventListener('input', () => {
+    applySoundSettings(soundInput.checked, Number(volumeInput.value));
   });
 
   async function renderSaveSlots() {
@@ -858,6 +910,7 @@ function showStartMenu() {
             menu.remove();
             startMenuVisible = false;
             startMenu = null;
+            updatePointerLockHint();
             document.body.requestPointerLock();
             showToast('已载入世界');
           }
@@ -886,6 +939,7 @@ function applyGameMode(mode: string, startLevel = 0, survivalStarterKit = false)
     player.survivalMode = false;
     levelManager.currentLevel = startLevel;
     levelManager.skipped = false;
+    persistLevelProgress();
   }
 }
 
@@ -986,6 +1040,7 @@ function loadWorldSave(save: WorldSave) {
   dayNight.restore(save.time.timeOfDay, save.time.dayCount, save.time.paused);
   levelManager.currentLevel = save.level.currentLevel;
   levelManager.skipped = save.level.skipped;
+  persistLevelProgress();
   playTimeSeconds = save.playTime;
 
   setupCreativeUI();
@@ -1000,14 +1055,14 @@ function setupCreativeUI() {
     statsBars.style.display = player.survivalMode ? 'flex' : 'none';
   }
   if (creativePanel) {
-    creativePanel.style.display = player.survivalMode ? 'none' : (creativePanelVisible ? 'block' : 'none');
+    creativePanel.style.display = creativePanelVisible ? 'block' : 'none';
   }
   if (arithmeticPanel) {
-    arithmeticPanel.style.display = player.survivalMode || !arithmeticVisible ? 'none' : 'block';
+    arithmeticPanel.style.display = arithmeticVisible ? 'block' : 'none';
   }
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) {
-    settingsBtn.style.display = player.survivalMode ? 'none' : 'block';
+    settingsBtn.style.display = 'block';
   }
   const firstStep = document.getElementById('first-step');
   if (firstStep) {
@@ -1079,10 +1134,12 @@ function showLevelComplete() {
   levelCompleteText.textContent = `你完成了「${level.title}」！`;
   levelCompletePopup.style.display = 'flex';
   document.exitPointerLock();
+  updatePointerLockHint();
 }
 
 levelNextBtn.addEventListener('click', () => {
   levelManager.nextLevel();
+  persistLevelProgress();
   levelCompletePopup.style.display = 'none';
   updateLevelUI();
   document.body.requestPointerLock();
@@ -2198,6 +2255,7 @@ if (import.meta.env.DEV) {
     resetLevels: () => {
       levelManager.currentLevel = 0;
       levelManager.skipped = false;
+      persistLevelProgress();
       updateLevelUI();
     },
     updateLevelUI: () => {

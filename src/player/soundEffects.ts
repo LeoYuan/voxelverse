@@ -30,8 +30,11 @@ type AudioContextFactory = () => AudioContextLike;
 function playWithContext(
   ctx: AudioContextLike,
   type: SoundKind,
-  random: () => number
+  random: () => number,
+  volume: number
 ) {
+  if (volume <= 0) return;
+
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -40,7 +43,7 @@ function playWithContext(
   if (type === 'break') {
     osc.frequency.setValueAtTime(200 + random() * 100, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.setValueAtTime(0.15 * volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.1);
@@ -48,7 +51,7 @@ function playWithContext(
   }
 
   osc.frequency.setValueAtTime(400 + random() * 50, ctx.currentTime);
-  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.setValueAtTime(0.1 * volume, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.08);
@@ -56,11 +59,23 @@ function playWithContext(
 
 export function createSoundEffects(factory: AudioContextFactory) {
   let ctx: AudioContextLike | null = null;
+  let muted = false;
+  let volume = 0.8;
 
   return {
     play(type: SoundKind, random: () => number = Math.random) {
+      if (muted) return;
       ctx ??= factory();
-      playWithContext(ctx, type, random);
+      playWithContext(ctx, type, random, volume);
+    },
+    setMuted(nextMuted: boolean) {
+      muted = nextMuted;
+    },
+    setVolume(nextVolume: number) {
+      volume = Math.max(0, Math.min(1, nextVolume));
+    },
+    getSettings() {
+      return { muted, volume };
     },
   };
 }

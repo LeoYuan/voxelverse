@@ -89,10 +89,24 @@ describe('soundEffects', () => {
     expect(ctx.oscillators[0].startFrequency).toBe(200);
     expect(ctx.oscillators[0].endFrequency).toBe(50);
     expect(ctx.oscillators[0].stopTime).toBe(2.1);
-    expect(ctx.gains[0].startGain).toBe(0.15);
+    expect(ctx.gains[0].startGain).toBe(0.12);
 
     expect(ctx.oscillators[1].startFrequency).toBe(400);
     expect(ctx.oscillators[1].stopTime).toBe(2.08);
-    expect(ctx.gains[1].startGain).toBe(0.1);
+    expect(ctx.gains[1].startGain).toBe(0.08000000000000002);
+  });
+
+  it('applies volume and mute settings', () => {
+    const ctx = new FakeAudioContext();
+    const sounds = createSoundEffects(() => ctx);
+
+    sounds.setVolume(0.5);
+    sounds.play('break', () => 0);
+    expect(ctx.gains[0].startGain).toBe(0.075);
+
+    sounds.setMuted(true);
+    sounds.play('place', () => 0);
+    expect(ctx.oscillators).toHaveLength(1);
+    expect(sounds.getSettings()).toEqual({ muted: true, volume: 0.5 });
   });
 });
