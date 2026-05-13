@@ -27,6 +27,8 @@ import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
 import { getLevelPreviewLayout } from './tutorial/levelPreview';
 import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
 import { getInitialSceneLayout } from './world/initialSceneLayout';
+import { WorldSaveStore } from './persistence/WorldSaveStore';
+import { WORLD_SAVE_VERSION, type FurnaceSaveState, type WorldSave } from './persistence/WorldSave';
 import './style.css';
 
 const container = document.getElementById('app')!;
@@ -41,6 +43,9 @@ const vr = new VoxelRenderer(container);
 
 // Init world
 const chunkManager = new ChunkManager(42);
+const WORLD_SEED = 42;
+const saveStore = new WorldSaveStore();
+let playTimeSeconds = 0;
 
 // Redstone engine
 const redstoneEngine = new RedstoneEngine();
@@ -455,6 +460,15 @@ function giveStarterKit() {
   player.inventory.addItem(31, 3);   // 3 raw beef
 }
 
+function showToast(message: string) {
+  const msg = document.createElement('div');
+  msg.textContent = message;
+  msg.style.cssText = 'position:fixed;top:40%;left:50%;transform:translateX(-50%);color:#fff;background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:10px 14px;font-size:16px;text-shadow:0 0 4px #000;pointer-events:none;z-index:2000;transition:opacity 0.4s;';
+  document.body.appendChild(msg);
+  setTimeout(() => { msg.style.opacity = '0'; }, 900);
+  setTimeout(() => msg.remove(), 1400);
+}
+
 // Player stats
 const playerStats = new PlayerStats();
 
@@ -551,6 +565,7 @@ function showStartMenu() {
       <div class="start-body">
         <div class="start-tabs">
           <div class="start-tab active" data-tab="mode">开始游戏</div>
+          <div class="start-tab" data-tab="saves">存档</div>
           <div class="start-tab" data-tab="settings">设置</div>
           <div class="start-tab" data-tab="guide">游戏说明</div>
         </div>
@@ -597,6 +612,13 @@ function showStartMenu() {
               <h3>生存挑战</h3>
               <p>采集资源、合成工具、对抗怪物</p>
             </div>
+          </div>
+        </div>
+
+        <div class="start-panel" data-panel="saves">
+          <div class="settings-section">
+            <h4>世界存档</h4>
+            <div id="save-slot-list" class="save-slot-list"></div>
           </div>
         </div>
 
@@ -676,6 +698,7 @@ function showStartMenu() {
   // State
   let selectedMode = 'challenge';
   let selectedStartLevel = 0;
+  void renderSaveSlots();
 
   // Tab switching
   const menu = startMenu!;
@@ -738,6 +761,65 @@ function showStartMenu() {
   sensInput.addEventListener('change', () => {
     localStorage.setItem('voxelverse-sensitivity', sensInput.value);
   });
+
+  async function renderSaveSlots() {
+    const list = menu.querySelector('#save-slot-list') as HTMLElement | null;
+    if (!list) return;
+    list.innerHTML = '<div class="save-slot-muted">读取存档中...</div>';
+    const summaries = await saveStore.list();
+    const summaryBySlot = new Map(summaries.map((summary) => [summary.slotId, summary]));
+    list.innerHTML = '';
+
+    for (let i = 1; i <= 3; i++) {
+      const slotId = `slot-${i}`;
+      const summary = summaryBySlot.get(slotId);
+      const row = document.createElement('div');
+      row.className = 'save-slot-row';
+      const updatedText = summary
+        ? new Date(summary.updatedAt).toLocaleString()
+        : '空槽位';
+      row.innerHTML = `
+        <div class="save-slot-meta">
+          <strong>槽位 ${i}</strong>
+          <span>${summary ? summary.name : '未保存世界'}</span>
+          <small>${updatedText}</small>
+        </div>
+        <div class="save-slot-actions">
+          <button data-action="save" data-slot="${slotId}">保存</button>
+          <button data-action="load" data-slot="${slotId}" ${summary ? '' : 'disabled'}>继续</button>
+          <button data-action="delete" data-slot="${slotId}" ${summary ? '' : 'disabled'}>删除</button>
+        </div>
+      `;
+      list.appendChild(row);
+    }
+
+    list.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const target = button as HTMLButtonElement;
+        const slotId = target.dataset.slot!;
+        const action = target.dataset.action;
+        if (action === 'save') {
+          await saveCurrentWorld(slotId);
+          showToast('已保存世界');
+          await renderSaveSlots();
+        } else if (action === 'load') {
+          const save = await saveStore.load(slotId);
+          if (save) {
+            loadWorldSave(save);
+            menu.remove();
+            startMenuVisible = false;
+            startMenu = null;
+            document.body.requestPointerLock();
+            showToast('已载入世界');
+          }
+        } else if (action === 'delete') {
+          await saveStore.delete(slotId);
+          showToast('已删除存档');
+          await renderSaveSlots();
+        }
+      });
+    });
+  }
 }
 
 // Show start menu on init
@@ -749,6 +831,100 @@ document.addEventListener('keydown', (e) => {
     showStartMenu();
   }
 });
+
+function collectFurnaceStates(): FurnaceSaveState[] {
+  return Array.from(furnaceStates.entries(), ([key, state]) => ({
+    key,
+    state: state.snapshot(),
+  }));
+}
+
+async function saveCurrentWorld(slotId = 'slot-1') {
+  const existing = await saveStore.load(slotId);
+  const now = new Date().toISOString();
+  const view = player.getViewState();
+  const save: WorldSave = {
+    version: WORLD_SAVE_VERSION,
+    slotId,
+    name: existing?.name ?? `World ${slotId.replace('slot-', '')}`,
+    seed: WORLD_SEED,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    playTime: playTimeSeconds,
+    player: {
+      position: { x: player.position.x, y: player.position.y, z: player.position.z },
+      velocity: { x: player.velocity.x, y: player.velocity.y, z: player.velocity.z },
+      yaw: view.yaw,
+      pitch: view.pitch,
+      survivalMode: player.survivalMode,
+      isFlying: player.isFlying,
+      selectedSlot: player.inventory.selectedSlot,
+      inventory: player.inventory.slots.map((slot) => ({ ...slot })),
+      health: playerStats.health,
+      hunger: playerStats.hunger,
+      spawnPoint: { ...spawnPoint },
+      toolDurability: player.getToolDurabilitySnapshot(),
+    },
+    time: {
+      timeOfDay: dayNight.timeOfDay,
+      dayCount: dayNight.dayCount,
+      paused: dayNight.isPaused,
+    },
+    level: {
+      currentLevel: levelManager.currentLevel,
+      skipped: levelManager.skipped,
+    },
+    blocks: chunkManager.getBlockDeltas(),
+    redstone: redstoneEngine.snapshot(),
+    furnaces: collectFurnaceStates(),
+  };
+  await saveStore.save(save);
+}
+
+function loadWorldSave(save: WorldSave) {
+  if (save.version !== WORLD_SAVE_VERSION) {
+    showToast('存档版本不兼容');
+    return;
+  }
+
+  chunkManager.applyBlockDeltas(save.blocks);
+  chunkManager.rebuildLoadedChunks((chunk) => vr.rebuildChunkMesh(chunk));
+
+  redstoneEngine.restore(save.redstone);
+  furnaceStates.clear();
+  for (const entry of save.furnaces) {
+    furnaceStates.set(entry.key, new FurnaceState(entry.state));
+  }
+
+  player.position.x = save.player.position.x;
+  player.position.y = save.player.position.y;
+  player.position.z = save.player.position.z;
+  player.velocity.x = save.player.velocity.x;
+  player.velocity.y = save.player.velocity.y;
+  player.velocity.z = save.player.velocity.z;
+  player.survivalMode = save.player.survivalMode;
+  player.isFlying = save.player.isFlying;
+  player.setViewState(save.player.yaw, save.player.pitch);
+  player.inventory.slots = save.player.inventory.map((slot) => ({ ...slot }));
+  player.inventory.setSelectedSlot(save.player.selectedSlot);
+  player.restoreToolDurability(save.player.toolDurability);
+
+  playerStats.health = save.player.health;
+  playerStats.hunger = save.player.hunger;
+  playerStats.isDead = save.player.health <= 0;
+  isDead = playerStats.isDead;
+  deathScreen.style.display = isDead ? 'flex' : 'none';
+
+  spawnPoint = { ...save.player.spawnPoint };
+  dayNight.restore(save.time.timeOfDay, save.time.dayCount, save.time.paused);
+  levelManager.currentLevel = save.level.currentLevel;
+  levelManager.skipped = save.level.skipped;
+  playTimeSeconds = save.playTime;
+
+  setupCreativeUI();
+  updateHotbarUI();
+  updateLevelUI();
+}
 
 // Creative mode UI setup
 function setupCreativeUI() {
@@ -1584,6 +1760,7 @@ function loop() {
   const now = performance.now();
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
+  playTimeSeconds += dt;
 
   // Update day/night cycle (accelerated: 2 minutes per day)
   dayNight.update(dt * 10);

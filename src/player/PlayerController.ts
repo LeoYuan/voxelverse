@@ -798,6 +798,23 @@ export class PlayerController {
     );
   }
 
+  getViewState(): { yaw: number; pitch: number } {
+    return { yaw: this.yaw, pitch: this.pitch };
+  }
+
+  setViewState(yaw: number, pitch: number) {
+    this.yaw = yaw;
+    this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+  }
+
+  getToolDurabilitySnapshot(): Array<[number, number]> {
+    return Array.from(this.toolDurability.entries());
+  }
+
+  restoreToolDurability(snapshot: Array<[number, number]>) {
+    this.toolDurability = new Map(snapshot);
+  }
+
   private triggerArmSwing() {
     if (!this.armMesh) return;
     this.isArmSwinging = true;

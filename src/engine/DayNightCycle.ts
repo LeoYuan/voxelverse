@@ -74,6 +74,16 @@ export class DayNightCycle {
     }
   }
 
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  restore(timeOfDay: number, dayCount: number, paused: boolean) {
+    this.timeOfDay = timeOfDay;
+    this.dayCount = dayCount;
+    this.paused = paused;
+  }
+
   pause() {
     this.paused = true;
   }
