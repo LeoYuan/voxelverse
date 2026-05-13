@@ -928,6 +928,24 @@ canvas {
   margin-bottom: 8px;
 }
 
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mode-option input {
+  accent-color: #6dbf35;
+}
+
 /* Settings panel */
 .settings-section {
   margin-bottom: 20px;

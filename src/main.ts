@@ -460,6 +460,13 @@ function giveStarterKit() {
   player.inventory.addItem(31, 3);   // 3 raw beef
 }
 
+function clearInventory() {
+  for (let i = 0; i < player.inventory.slots.length; i++) {
+    player.inventory.slots[i] = { blockId: 0, count: 0 };
+  }
+  player.inventory.setSelectedSlot(0);
+}
+
 function showToast(message: string) {
   const msg = document.createElement('div');
   msg.textContent = message;
@@ -611,6 +618,10 @@ function showStartMenu() {
               <div class="mode-icon">⚔️</div>
               <h3>生存挑战</h3>
               <p>采集资源、合成工具、对抗怪物</p>
+              <label class="mode-option">
+                <input type="checkbox" id="survival-starter-kit">
+                <span>带新手包</span>
+              </label>
             </div>
           </div>
         </div>
@@ -698,10 +709,11 @@ function showStartMenu() {
   // State
   let selectedMode = 'challenge';
   let selectedStartLevel = 0;
+  let useSurvivalStarterKit = false;
+  const menu = startMenu!;
   void renderSaveSlots();
 
   // Tab switching
-  const menu = startMenu!;
   menu.querySelectorAll('.start-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       menu.querySelectorAll('.start-tab').forEach(t => t.classList.remove('active'));
@@ -728,30 +740,32 @@ function showStartMenu() {
       selectedStartLevel = parseInt(levelSelect.value);
     });
   }
+  const survivalStarterKitInput = menu.querySelector('#survival-starter-kit') as HTMLInputElement | null;
+  survivalStarterKitInput?.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  survivalStarterKitInput?.addEventListener('change', () => {
+    useSurvivalStarterKit = survivalStarterKitInput.checked;
+  });
 
-  // Start button
-  menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
+  function startGameFromMenu(lockPointer: boolean) {
     menu.remove();
     startMenuVisible = false;
     startMenu = null;
 
-    // Apply mode
-    if (selectedMode === 'creative') {
-      player.survivalMode = false;
-      levelManager.skip();
-    } else if (selectedMode === 'survival') {
-      player.survivalMode = true;
-      giveStarterKit();
-      levelManager.skip();
-    } else if (selectedMode === 'challenge') {
-      player.survivalMode = false;
-      levelManager.currentLevel = selectedStartLevel;
-      levelManager.skipped = false;
-    }
-
+    applyGameMode(selectedMode, selectedStartLevel, useSurvivalStarterKit);
     setupCreativeUI();
     updateLevelUI();
-    document.body.requestPointerLock();
+    if (lockPointer) {
+      void document.body.requestPointerLock().catch(() => {
+        // Browser automation and some documents can reject pointer lock.
+      });
+    }
+  }
+
+  // Start button
+  menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
+    startGameFromMenu(true);
   });
 
   // Settings: save to localStorage
@@ -819,6 +833,24 @@ function showStartMenu() {
         }
       });
     });
+  }
+}
+
+function applyGameMode(mode: string, startLevel = 0, survivalStarterKit = false) {
+  if (mode === 'creative') {
+    player.survivalMode = false;
+    levelManager.skip();
+  } else if (mode === 'survival') {
+    player.survivalMode = true;
+    clearInventory();
+    if (survivalStarterKit) {
+      giveStarterKit();
+    }
+    levelManager.skip();
+  } else {
+    player.survivalMode = false;
+    levelManager.currentLevel = startLevel;
+    levelManager.skipped = false;
   }
 }
 
@@ -1168,9 +1200,6 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyG') {
-    if (player.survivalMode) {
-      giveStarterKit();
-    }
     setupCreativeUI();
     updateHotbarUI();
   }
@@ -1269,7 +1298,7 @@ function toggleCraftingUI() {
         <div class="craft-result-slot" id="craft-result"></div>
         <button id="craft-btn">合成</button>
       </div>
-      <p class="craft-hint">点击快捷栏物品放入合成格 | ESC 关闭</p>
+      <p class="craft-hint" id="craft-feedback">点击快捷栏物品放入合成格 | ESC 关闭</p>
     </div>
   `;
   container.appendChild(overlay);
@@ -1297,19 +1326,38 @@ function toggleCraftingUI() {
 
   document.getElementById('craft-btn')!.addEventListener('click', () => {
     const result = Crafting.match(craftingGrid.slice(0, gridCells), craftingGridSize);
-    if (result) {
-      const success = player.inventory.craft({ gridSize: craftingGridSize, inputs: craftingGrid.slice(0, gridCells), output: result.output, count: result.count });
-      if (success) {
-        // Clear crafting grid
-        for (let i = 0; i < gridCells; i++) craftingGrid[i] = 0;
-        updateCraftingPreview();
-        renderCraftingGrid();
-        updateHotbarUI();
-      }
+    if (!result) {
+      setCraftFeedback('没有匹配的配方');
+      return;
+    }
+
+    const recipe = { gridSize: craftingGridSize, inputs: craftingGrid.slice(0, gridCells), output: result.output, count: result.count };
+    if (!player.inventory.canCraft(recipe)) {
+      setCraftFeedback('材料不足');
+      return;
+    }
+    if (!player.inventory.canFit(result.output, result.count)) {
+      setCraftFeedback('背包已满，无法接收产物');
+      return;
+    }
+
+    if (player.inventory.craft(recipe)) {
+      for (let i = 0; i < gridCells; i++) craftingGrid[i] = 0;
+      setCraftFeedback('合成成功');
+      updateCraftingPreview();
+      renderCraftingGrid();
+      updateHotbarUI();
     }
   });
 
   updateCraftingPreview();
+}
+
+function setCraftFeedback(message: string) {
+  const feedback = document.getElementById('craft-feedback');
+  if (feedback) {
+    feedback.textContent = message;
+  }
 }
 
 function renderCraftingGrid() {
@@ -1433,6 +1481,10 @@ function placeSelectedInFurnaceSlot(slotType: 'input' | 'fuel') {
   const snapshot = state.snapshot();
 
   if (slotType === 'input') {
+    if (!FurnaceRegistry.getRecipe(selected.blockId)) {
+      showToast('这个物品不能熔炼');
+      return;
+    }
     if (snapshot.inputId !== 0 && snapshot.inputId !== selected.blockId) return;
     state.setInput(selected.blockId, snapshot.inputCount + 1);
   } else {
@@ -1450,6 +1502,12 @@ function takeFurnaceOutput() {
   if (!activeFurnaceKey) return;
   const state = furnaceStates.get(activeFurnaceKey);
   if (!state) return;
+  const snapshot = state.snapshot();
+  if (snapshot.outputId === 0 || snapshot.outputCount <= 0) return;
+  if (!player.inventory.canFit(snapshot.outputId, snapshot.outputCount)) {
+    showToast('背包已满，无法取出产物');
+    return;
+  }
   const output = state.takeOutput();
   if (!output) return;
   const overflow = player.inventory.addItem(output.itemId, output.count);
@@ -1925,6 +1983,20 @@ if (import.meta.env.DEV) {
       player.survivalMode = v;
       setupCreativeUI();
     },
+    inventorySummary: () => player.inventory.slots.map((slot) => ({ ...slot })),
+    startMode: (mode: 'challenge' | 'creative' | 'survival', starterKit = false) => {
+      document.querySelector('.start-menu')?.remove();
+      startMenuVisible = false;
+      startMenu = null;
+      applyGameMode(mode, 0, starterKit);
+      setupCreativeUI();
+      updateLevelUI();
+      updateHotbarUI();
+    },
+    openCrafting: () => {
+      if (!craftingOpen) toggleCraftingUI();
+    },
+    craftingFeedback: () => document.getElementById('craft-feedback')?.textContent ?? '',
     setPlayerPos: (x: number, y: number, z: number) => {
       player.position.x = x;
       player.position.y = y;
