@@ -32,6 +32,37 @@ describe('DayNightCycle', () => {
     expect(cycle.timeOfDay).toBe(start + 10);
   });
 
+  it('sets and pauses a stable campaign day', () => {
+    const cycle = new DayNightCycle();
+
+    cycle.setDay();
+
+    expect(cycle.timeOfDay).toBe(DAY_LENGTH * 0.5);
+    expect(cycle.isDay).toBe(true);
+    expect(cycle.isPaused).toBe(true);
+  });
+
+  it('sets and pauses a stable campaign night', () => {
+    const cycle = new DayNightCycle();
+
+    cycle.setNight();
+
+    expect(cycle.timeOfDay).toBe(DAY_LENGTH * 0.9);
+    expect(cycle.isNight).toBe(true);
+    expect(cycle.isPaused).toBe(true);
+  });
+
+  it('can set night without pausing for a continuous survival cycle', () => {
+    const cycle = new DayNightCycle();
+    cycle.setNight(false);
+    const start = cycle.timeOfDay;
+
+    cycle.update(5);
+
+    expect(cycle.isPaused).toBe(false);
+    expect(cycle.timeOfDay).toBe(start + 5);
+  });
+
   it('should increment dayCount when timeOfDay reaches DAY_LENGTH', () => {
     const cycle = new DayNightCycle();
     cycle.timeOfDay = DAY_LENGTH - 5;

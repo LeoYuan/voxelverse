@@ -74,6 +74,20 @@ export class DayNightCycle {
     }
   }
 
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  setDay(paused = true): void {
+    this.timeOfDay = DAY_LENGTH * 0.5;
+    this.paused = paused;
+  }
+
+  setNight(paused = true): void {
+    this.timeOfDay = DAY_LENGTH * 0.9;
+    this.paused = paused;
+  }
+
   pause() {
     this.paused = true;
   }
