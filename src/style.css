@@ -797,6 +797,114 @@ canvas {
   filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
 }
 
+/* Persistent campaign HUD */
+.campaign-hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 15px 16px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(33, 45, 37, 0.94), rgba(15, 20, 18, 0.9));
+  border: 1px solid rgba(164, 214, 121, 0.32);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.campaign-hud__eyebrow {
+  color: #a8d77d;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+.campaign-hud__title {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.campaign-hud__objective {
+  margin-top: 7px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.campaign-hud__progress {
+  position: relative;
+  height: 20px;
+  margin-top: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+}
+
+.campaign-hud__progress-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #6da93f, #a8d957);
+  transition: width 0.24s ease;
+}
+
+.campaign-hud__progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.campaign-hud__defense {
+  margin-top: 9px;
+  padding: 7px 9px;
+  color: #ffd083;
+  background: rgba(196, 99, 36, 0.16);
+  border-left: 3px solid #e58d43;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.campaign-hud__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.campaign-hud__reward {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.campaign-hud__action {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  color: #14200f;
+  background: #a8d957;
+  border: 0;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.campaign-hud__action:hover {
+  background: #b9e76d;
+}
+
 /* Enhanced Start Menu */
 .start-menu {
   position: absolute;
