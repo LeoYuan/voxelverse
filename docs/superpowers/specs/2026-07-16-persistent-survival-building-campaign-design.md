@@ -123,6 +123,7 @@ The first version uses versioned `localStorage` data because the modified-world 
 - inventory slots and selected slot
 - player position and respawn point
 - player-placed and player-removed block mutations
+- pending reward items that did not fit in the inventory
 - current endless-wave index after campaign completion
 
 ### World mutation model
@@ -215,6 +216,7 @@ Responsibilities:
 
 - translate world state into `CampaignProgressInput`
 - apply rewards to inventory
+- retain and retry inventory-overflow rewards
 - start and clear campaign waves
 - switch day/night presentation
 - handle campaign death and respawn
