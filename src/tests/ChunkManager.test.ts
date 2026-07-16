@@ -3,6 +3,35 @@ import { ChunkManager } from '../engine/ChunkManager';
 import { BLOCK_STONE } from '../blocks/BlockRegistry';
 
 describe('ChunkManager', () => {
+  it('does not update chunks again while the player remains in one chunk', () => {
+    const cm = new ChunkManager(42);
+
+    const first = cm.updatePlayerPosition(0, 0, 1);
+    const second = cm.updatePlayerPosition(15.9, 0, 1);
+
+    expect(first.loaded).toHaveLength(9);
+    expect(first.unloaded).toHaveLength(0);
+    expect(second).toEqual({ loaded: [], unloaded: [] });
+  });
+
+  it('returns only edge chunk deltas after crossing a chunk boundary', () => {
+    const cm = new ChunkManager(42);
+    cm.updatePlayerPosition(0, 0, 1);
+
+    const delta = cm.updatePlayerPosition(16, 0, 1);
+
+    expect(delta.loaded.map(chunk => `${chunk.cx},${chunk.cz}`).sort()).toEqual([
+      '2,-1',
+      '2,0',
+      '2,1',
+    ]);
+    expect(delta.unloaded.map(chunk => `${chunk.cx},${chunk.cz}`).sort()).toEqual([
+      '-1,-1',
+      '-1,0',
+      '-1,1',
+    ]);
+  });
+
   it('should track player-placed blocks', () => {
     const cm = new ChunkManager(42);
     cm.ensureChunk(0, 0);

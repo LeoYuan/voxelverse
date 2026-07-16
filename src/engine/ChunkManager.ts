@@ -1,9 +1,15 @@
 import { WorldGenerator } from './WorldGenerator';
 import { Chunk, CHUNK_SIZE, CHUNK_HEIGHT } from './Chunk';
 
+export interface ChunkLoadDelta {
+  loaded: Chunk[];
+  unloaded: Array<{ cx: number; cz: number }>;
+}
+
 export class ChunkManager {
   private chunks = new Map<string, Chunk>();
   private generator: WorldGenerator;
+  private lastPlayerChunk: { cx: number; cz: number; renderDistance: number } | null = null;
   /** Tracks coordinates of blocks placed by the player (not world-generated) */
   private playerPlaced = new Set<string>();
   /** Tracks coordinates of generated blocks removed directly by the player. */
@@ -85,15 +91,32 @@ export class ChunkManager {
   }
 
   /** Load chunks around player, unload distant ones */
-  updatePlayerPosition(px: number, pz: number, renderDistance: number) {
+  updatePlayerPosition(px: number, pz: number, renderDistance: number): ChunkLoadDelta {
     const pcx = Math.floor(px / CHUNK_SIZE);
     const pcz = Math.floor(pz / CHUNK_SIZE);
     const dist = renderDistance;
+    const previous = this.lastPlayerChunk;
+    if (
+      previous &&
+      previous.cx === pcx &&
+      previous.cz === pcz &&
+      previous.renderDistance === dist
+    ) {
+      return { loaded: [], unloaded: [] };
+    }
+    this.lastPlayerChunk = { cx: pcx, cz: pcz, renderDistance: dist };
+
+    const loaded: Chunk[] = [];
+    const unloaded: Array<{ cx: number; cz: number }> = [];
 
     // Ensure chunks exist
     for (let dx = -dist; dx <= dist; dx++) {
       for (let dz = -dist; dz <= dist; dz++) {
-        this.ensureChunk(pcx + dx, pcz + dz);
+        const cx = pcx + dx;
+        const cz = pcz + dz;
+        const existed = this.getChunk(cx, cz);
+        const chunk = this.ensureChunk(cx, cz);
+        if (!existed) loaded.push(chunk);
       }
     }
 
@@ -101,10 +124,13 @@ export class ChunkManager {
     for (const [k, chunk] of this.chunks) {
       const dx = Math.abs(chunk.cx - pcx);
       const dz = Math.abs(chunk.cz - pcz);
-      if (dx > dist + 2 || dz > dist + 2) {
+      if (dx > dist || dz > dist) {
         this.chunks.delete(k);
+        unloaded.push({ cx: chunk.cx, cz: chunk.cz });
       }
     }
+
+    return { loaded, unloaded };
   }
 
   getAllChunks(): Chunk[] {
