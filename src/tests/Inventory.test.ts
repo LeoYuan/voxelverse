@@ -3,6 +3,38 @@ import { Inventory } from '../player/Inventory';
 import { BLOCK_COBBLESTONE, BLOCK_FURNACE, BLOCK_PLANKS } from '../blocks/BlockRegistry';
 
 describe('Inventory', () => {
+  it('snapshots and restores slots without sharing mutable references', () => {
+    const inventory = new Inventory();
+    inventory.slots[0] = { blockId: BLOCK_PLANKS, count: 12 };
+    inventory.selectedSlot = 4;
+
+    const snapshot = inventory.snapshot();
+    inventory.slots[0].count = 2;
+    inventory.selectedSlot = 0;
+
+    expect(snapshot).toEqual({
+      slots: [
+        { blockId: BLOCK_PLANKS, count: 12 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+        { blockId: 0, count: 0 },
+      ],
+      selectedSlot: 4,
+    });
+
+    const restored = new Inventory();
+    restored.restore(snapshot);
+    snapshot.slots[0].count = 1;
+
+    expect(restored.slots[0]).toEqual({ blockId: BLOCK_PLANKS, count: 12 });
+    expect(restored.selectedSlot).toBe(4);
+  });
+
   it('does not consume crafting inputs if the output cannot fit', () => {
     const inventory = new Inventory();
 

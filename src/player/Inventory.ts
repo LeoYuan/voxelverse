@@ -5,6 +5,11 @@ export interface InventorySlot {
   count: number;
 }
 
+export interface InventorySnapshot {
+  slots: InventorySlot[];
+  selectedSlot: number;
+}
+
 const MAX_STACK = 64;
 const TOOL_IDS = new Set([40, 41, 42, 43, 44]); // stick + pickaxes
 
@@ -24,6 +29,18 @@ export class Inventory {
     if (index >= 0 && index < 9) {
       this.selectedSlot = index;
     }
+  }
+
+  snapshot(): InventorySnapshot {
+    return {
+      slots: this.slots.map(slot => ({ ...slot })),
+      selectedSlot: this.selectedSlot,
+    };
+  }
+
+  restore(snapshot: InventorySnapshot): void {
+    this.slots = snapshot.slots.map(slot => ({ ...slot }));
+    this.selectedSlot = snapshot.selectedSlot;
   }
 
   /** Add items to inventory. Returns overflow count that couldn't fit. */
