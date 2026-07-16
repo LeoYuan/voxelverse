@@ -385,10 +385,7 @@ export class PlayerController {
   private breakBlockAt(x: number, y: number, z: number) {
     const blockId = this.chunkManager.getBlock(x, y, z);
     const selectedToolId = this.inventory.getSelectedBlockId();
-    this.chunkManager.setBlock(x, y, z, 0);
-    if (blockId !== 0) {
-      this.chunkManager.markPlayerRemoved(x, y, z);
-    }
+    this.chunkManager.setPlayerBlock(x, y, z, 0);
     this.onBlockChange(x, y, z);
     this.playSound('break');
 
@@ -495,8 +492,7 @@ export class PlayerController {
     const isUnderFeet = intersects && ny < this.position.y + 0.1;
 
     if (!intersects || isUnderFeet) {
-      this.chunkManager.setBlock(nx, ny, nz, selectedId);
-      this.chunkManager.markPlayerPlaced(nx, ny, nz);
+      this.chunkManager.setPlayerBlock(nx, ny, nz, selectedId);
       this.onBlockChange(nx, ny, nz);
       this.playSound('place');
 
