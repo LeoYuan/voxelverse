@@ -14,11 +14,14 @@ export class Mob {
   protected speed = 3.0;
   protected gravity = 28.0;
   protected onGround = false;
+  private readonly originalColor: number;
+  private hitFlashTimer = 0;
 
   constructor(x: number, y: number, z: number, color: number, health: number) {
     this.position = new Vec3(x, y, z);
     this.health = health;
     this.maxHealth = health;
+    this.originalColor = color;
     this.mesh = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color }));
     this.mesh.position.set(x, y + 0.9, z);
     this.mesh.castShadow = true;
@@ -26,6 +29,13 @@ export class Mob {
 
   update(dt: number, isSolid: (x: number, y: number, z: number) => boolean): boolean {
     if (this.dead) return false;
+
+    if (this.hitFlashTimer > 0) {
+      this.hitFlashTimer -= dt;
+      if (this.hitFlashTimer <= 0) {
+        (this.mesh.material as THREE.MeshLambertMaterial).color.setHex(this.originalColor);
+      }
+    }
 
     // Apply gravity
     this.velocity.y -= this.gravity * dt;
@@ -66,6 +76,15 @@ export class Mob {
     if (this.health <= 0) {
       this.dead = true;
     }
+  }
+
+  applyHit(amount: number, knockbackX: number, knockbackZ: number) {
+    if (this.dead) return;
+    this.takeDamage(amount);
+    this.velocity.x += knockbackX * 4;
+    this.velocity.z += knockbackZ * 4;
+    this.hitFlashTimer = 0.12;
+    (this.mesh.material as THREE.MeshLambertMaterial).color.setHex(0xffffff);
   }
 
   distanceTo(pos: Vec3): number {

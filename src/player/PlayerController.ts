@@ -65,7 +65,9 @@ export class PlayerController {
   private onBlockChange: (x: number, y: number, z: number) => void;
   private onInteract: ((x: number, y: number, z: number, blockId: number) => void) | null = null;
   private onPickupDrop: ((blockId: number) => boolean) | null = null;
+  private onPrimaryAttack: (() => boolean) | null = null;
   public inventory: Inventory;
+  public modeToggleEnabled = true;
   private blockNameEl: HTMLElement;
   private readonly soundEffects = getSharedSoundEffects();
 
@@ -84,7 +86,8 @@ export class PlayerController {
     voxelRenderer: VoxelRenderer,
     onBlockChange: (x: number, y: number, z: number) => void,
     onInteract?: (x: number, y: number, z: number, blockId: number) => void,
-    onPickupDrop?: (blockId: number) => boolean
+    onPickupDrop?: (blockId: number) => boolean,
+    onPrimaryAttack?: () => boolean,
   ) {
     this.camera = camera;
     this.chunkManager = chunkManager;
@@ -92,6 +95,7 @@ export class PlayerController {
     this.onBlockChange = onBlockChange;
     if (onInteract) this.onInteract = onInteract;
     if (onPickupDrop) this.onPickupDrop = onPickupDrop;
+    if (onPrimaryAttack) this.onPrimaryAttack = onPrimaryAttack;
     this.position = new Vec3(0, 20, 0);
     this.inventory = new Inventory();
 
@@ -193,7 +197,9 @@ export class PlayerController {
       case 'Digit7': this.setSlot(6); break;
       case 'Digit8': this.setSlot(7); break;
       case 'Digit9': this.setSlot(8); break;
-      case 'KeyG': this.survivalMode = !this.survivalMode; break;
+      case 'KeyG':
+        if (this.modeToggleEnabled) this.survivalMode = !this.survivalMode;
+        break;
       case 'KeyB': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 29; break;
       case 'KeyN': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 32; break;
       case 'KeyM': if (!this.survivalMode) this.inventory.slots[this.inventory.selectedSlot].blockId = 33; break;
@@ -263,8 +269,9 @@ export class PlayerController {
     this.lastClickButton = effectiveButton;
 
     if (effectiveButton === 0) {
-      this.isMining = true;
       this.triggerArmSwing();
+      if (this.onPrimaryAttack?.()) return;
+      this.isMining = true;
       if (this.survivalMode) {
         this.startMining();
       } else {
@@ -386,10 +393,7 @@ export class PlayerController {
   private breakBlockAt(x: number, y: number, z: number) {
     const blockId = this.chunkManager.getBlock(x, y, z);
     const selectedToolId = this.inventory.getSelectedBlockId();
-    this.chunkManager.setBlock(x, y, z, 0);
-    if (blockId !== 0) {
-      this.chunkManager.markPlayerRemoved(x, y, z);
-    }
+    this.chunkManager.setPlayerBlock(x, y, z, 0);
     this.onBlockChange(x, y, z);
     this.playSound('break');
 
@@ -496,8 +500,7 @@ export class PlayerController {
     const isUnderFeet = intersects && ny < this.position.y + 0.1;
 
     if (!intersects || isUnderFeet) {
-      this.chunkManager.setBlock(nx, ny, nz, selectedId);
-      this.chunkManager.markPlayerPlaced(nx, ny, nz);
+      this.chunkManager.setPlayerBlock(nx, ny, nz, selectedId);
       this.onBlockChange(nx, ny, nz);
       this.playSound('place');
 

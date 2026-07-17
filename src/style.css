@@ -959,6 +959,114 @@ canvas {
   filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
 }
 
+/* Persistent campaign HUD */
+.campaign-hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 15px 16px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(33, 45, 37, 0.94), rgba(15, 20, 18, 0.9));
+  border: 1px solid rgba(164, 214, 121, 0.32);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.campaign-hud__eyebrow {
+  color: #a8d77d;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+}
+
+.campaign-hud__title {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.campaign-hud__objective {
+  margin-top: 7px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.campaign-hud__progress {
+  position: relative;
+  height: 20px;
+  margin-top: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+}
+
+.campaign-hud__progress-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #6da93f, #a8d957);
+  transition: width 0.24s ease;
+}
+
+.campaign-hud__progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.campaign-hud__defense {
+  margin-top: 9px;
+  padding: 7px 9px;
+  color: #ffd083;
+  background: rgba(196, 99, 36, 0.16);
+  border-left: 3px solid #e58d43;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.campaign-hud__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.campaign-hud__reward {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.campaign-hud__action {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  color: #14200f;
+  background: #a8d957;
+  border: 0;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.campaign-hud__action:hover {
+  background: #b9e76d;
+}
+
 /* Enhanced Start Menu */
 .start-menu {
   position: absolute;
@@ -979,7 +1087,7 @@ canvas {
   border: 2px solid #3a3a3a;
   border-radius: 12px;
   padding: 0;
-  max-width: 600px;
+  max-width: 720px;
   width: 90%;
   color: #fff;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
@@ -1106,6 +1214,95 @@ canvas {
 
 .mode-option input {
   accent-color: #6dbf35;
+}
+
+.campaign-card {
+  position: relative;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background:
+    linear-gradient(125deg, rgba(63, 88, 48, 0.58), rgba(36, 45, 32, 0.82));
+}
+
+.campaign-card .mode-icon {
+  margin: 0;
+  font-size: 34px;
+}
+
+.campaign-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.campaign-card-heading h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.campaign-save-label {
+  padding: 3px 7px;
+  color: #dff5c6;
+  background: rgba(112, 164, 70, 0.28);
+  border: 1px solid rgba(169, 217, 124, 0.35);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.campaign-reset {
+  padding: 7px 10px;
+  color: #d5b8ad;
+  background: rgba(80, 35, 27, 0.36);
+  border: 1px solid rgba(214, 129, 100, 0.28);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.campaign-reset:hover {
+  color: #ffe1d5;
+  border-color: rgba(236, 150, 119, 0.58);
+}
+
+.campaign-result-message {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  z-index: 80;
+  padding: 11px 17px;
+  color: #fff;
+  background: rgba(28, 37, 29, 0.9);
+  border: 1px solid rgba(169, 217, 124, 0.45);
+  border-radius: 9px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.36);
+  font-size: 14px;
+  opacity: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.campaign-result-message--fade {
+  opacity: 0;
+  transform: translate(-50%, -65%);
+}
+
+@media (max-width: 620px) {
+  .campaign-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .campaign-reset {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
 }
 
 /* Settings panel */
