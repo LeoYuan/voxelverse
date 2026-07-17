@@ -32,6 +32,28 @@ describe('ChunkManager', () => {
     ]);
   });
 
+  it('streams a bounded number of missing chunks across repeated updates', () => {
+    const cm = new ChunkManager(42);
+
+    const first = cm.updatePlayerPosition(0, 0, 2, 3);
+    const second = cm.updatePlayerPosition(0, 0, 2, 3);
+
+    expect(first.loaded).toHaveLength(3);
+    expect(first.loaded[0]).toMatchObject({ cx: 0, cz: 0 });
+    expect(second.loaded).toHaveLength(3);
+    expect(cm.getAllChunks()).toHaveLength(6);
+
+    for (let i = 0; i < 7; i++) {
+      cm.updatePlayerPosition(0, 0, 2, 3);
+    }
+
+    expect(cm.getAllChunks()).toHaveLength(25);
+    expect(cm.updatePlayerPosition(0, 0, 2, 3)).toEqual({
+      loaded: [],
+      unloaded: [],
+    });
+  });
+
   it('should track player-placed blocks', () => {
     const cm = new ChunkManager(42);
     cm.ensureChunk(0, 0);

@@ -226,17 +226,36 @@ export class ChunkManager {
   }
 
   /** Load chunks around player, unload distant ones */
-  updatePlayerPosition(px: number, pz: number, renderDistance: number): ChunkLoadDelta {
+  updatePlayerPosition(
+    px: number,
+    pz: number,
+    renderDistance: number,
+    maxLoads = Number.POSITIVE_INFINITY,
+  ): ChunkLoadDelta {
     const pcx = Math.floor(px / CHUNK_SIZE);
     const pcz = Math.floor(pz / CHUNK_SIZE);
     const dist = renderDistance;
     const previous = this.lastPlayerChunk;
-    if (
+    const sameTarget =
       previous &&
       previous.cx === pcx &&
       previous.cz === pcz &&
-      previous.renderDistance === dist
-    ) {
+      previous.renderDistance === dist;
+    const missing: Array<{ cx: number; cz: number; distance: number }> = [];
+    for (let dx = -dist; dx <= dist; dx++) {
+      for (let dz = -dist; dz <= dist; dz++) {
+        const cx = pcx + dx;
+        const cz = pcz + dz;
+        if (!this.getChunk(cx, cz)) {
+          missing.push({
+            cx,
+            cz,
+            distance: dx * dx + dz * dz,
+          });
+        }
+      }
+    }
+    if (sameTarget && missing.length === 0) {
       return { loaded: [], unloaded: [] };
     }
     this.lastPlayerChunk = { cx: pcx, cz: pcz, renderDistance: dist };
@@ -244,15 +263,17 @@ export class ChunkManager {
     const loaded: Chunk[] = [];
     const unloaded: Array<{ cx: number; cz: number }> = [];
 
-    // Ensure chunks exist
-    for (let dx = -dist; dx <= dist; dx++) {
-      for (let dz = -dist; dz <= dist; dz++) {
-        const cx = pcx + dx;
-        const cz = pcz + dz;
-        const existed = this.getChunk(cx, cz);
-        const chunk = this.ensureChunk(cx, cz);
-        if (!existed) loaded.push(chunk);
-      }
+    // Generate nearby chunks first and cap work for smooth streaming.
+    missing.sort((a, b) =>
+      a.distance - b.distance ||
+      a.cx - b.cx ||
+      a.cz - b.cz,
+    );
+    const loadLimit = Number.isFinite(maxLoads)
+      ? Math.max(0, Math.floor(maxLoads))
+      : missing.length;
+    for (const { cx, cz } of missing.slice(0, loadLimit)) {
+      loaded.push(this.ensureChunk(cx, cz));
     }
 
     // Unload distant chunks

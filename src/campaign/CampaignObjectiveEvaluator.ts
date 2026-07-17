@@ -3,16 +3,21 @@ import {
   BLOCK_REDSTONE_LAMP_LIT,
 } from '../blocks/BlockRegistry';
 import type { ChunkManager } from '../engine/ChunkManager';
-import type { Vec3 } from '../utils/Vec3';
 import type { CampaignObjective } from './CampaignConfig';
 import type { CampaignProgress } from './CampaignManager';
 
 const CAMPAIGN_RADIUS = 16;
 
+export interface CampaignBasePosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export function evaluateCampaignObjective(
   objective: CampaignObjective,
   cm: ChunkManager,
-  base: Vec3,
+  base: CampaignBasePosition,
   chapterStartRevision: number,
 ): CampaignProgress {
   const centerX = Math.floor(base.x);

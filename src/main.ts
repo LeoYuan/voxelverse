@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { VoxelRenderer } from './rendering/VoxelRenderer';
 import { ChunkManager } from './engine/ChunkManager';
 import { PlayerController } from './player/PlayerController';
@@ -12,11 +13,12 @@ import {
   BLOCK_FLOWER_YELLOW, BLOCK_FLOWER_RED, BLOCK_FURNACE,
   BLOCK_CHEST, BLOCK_BRICK, BLOCK_STONE, BLOCK_COAL_ORE,
   BLOCK_SLAB_STONE, BLOCK_TALL_GRASS, BLOCK_LEAVES,
-  BLOCK_DIRT, BLOCK_COOKED_BEEF,
+  BLOCK_DIRT, BLOCK_COOKED_BEEF, BLOCK_WOODEN_PICKAXE,
   BlockRegistry, type BlockCategory
 } from './blocks/BlockRegistry';
 import { RedstoneEngine } from './redstone/RedstoneEngine';
 import { DropEntity } from './entities/DropEntity';
+import { Mob } from './entities/Mob';
 import { Zombie } from './entities/Zombie';
 import { Skeleton } from './entities/Skeleton';
 import { Creeper } from './entities/Creeper';
@@ -27,9 +29,34 @@ import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
 import { getLevelPreviewLayout } from './tutorial/levelPreview';
 import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
 import { getInitialSceneLayout } from './world/initialSceneLayout';
+import { CampaignManager } from './campaign/CampaignManager';
+import { CampaignWaveController } from './campaign/CampaignWaveController';
+import { CampaignRuntime } from './campaign/CampaignRuntime';
+import { CampaignHud } from './campaign/CampaignHud';
+import {
+  CampaignSaveStore,
+  type CampaignSaveData,
+} from './campaign/CampaignSaveStore';
+import {
+  evaluateCampaignObjective,
+} from './campaign/CampaignObjectiveEvaluator';
+import type { CampaignEnemyKind } from './campaign/CampaignConfig';
+import {
+  AttackCooldown,
+  getAttackDamage,
+  getKnockbackDirection,
+  selectAttackTarget,
+} from './combat/playerAttack';
 import './style.css';
 
+type GameMode = 'campaign' | 'challenge' | 'creative' | 'survival';
+
+const RENDER_DISTANCE = 4;
+const CHUNK_MESHES_PER_FRAME = 2;
+const CHUNK_DATA_LOADS_PER_FRAME = 1;
+
 const container = document.getElementById('app')!;
+let activeMode: GameMode = 'campaign';
 
 // Disable right-click context menu in game
 container.addEventListener('contextmenu', (e) => {
@@ -47,17 +74,48 @@ const redstoneEngine = new RedstoneEngine();
 
 // Day night cycle - paused at daytime for new player experience
 const dayNight = new DayNightCycle();
-dayNight.pause();
+dayNight.setDay();
 
 // Initial chunk loading around origin
-chunkManager.updatePlayerPosition(0, 0, 8);
+const pendingChunkMeshes = new Map<string, ReturnType<ChunkManager['ensureChunk']>>();
+const initialChunks = chunkManager.updatePlayerPosition(
+  0,
+  0,
+  RENDER_DISTANCE,
+  CHUNK_DATA_LOADS_PER_FRAME,
+);
+for (const chunk of initialChunks.loaded) {
+  const key = `${chunk.cx},${chunk.cz}`;
+  if (chunk.cx === 0 && chunk.cz === 0) {
+    vr.addChunkMesh(chunk);
+  } else {
+    pendingChunkMeshes.set(key, chunk);
+  }
+}
 
-// Create meshes for all loaded chunks
-for (const chunk of chunkManager.getAllChunks()) {
-  vr.addChunkMesh(chunk);
+function queueChunkMesh(chunk: ReturnType<ChunkManager['ensureChunk']>) {
+  pendingChunkMeshes.set(`${chunk.cx},${chunk.cz}`, chunk);
+}
+
+function processChunkMeshQueue(limit = CHUNK_MESHES_PER_FRAME) {
+  let processed = 0;
+  for (const [key, queuedChunk] of pendingChunkMeshes) {
+    pendingChunkMeshes.delete(key);
+    const currentChunk = chunkManager.getChunk(queuedChunk.cx, queuedChunk.cz);
+    if (currentChunk === queuedChunk) {
+      vr.addChunkMesh(queuedChunk);
+      processed++;
+    }
+    if (processed >= limit) break;
+  }
 }
 
 const initialSceneLayout = getInitialSceneLayout();
+const campaignSaveStore = new CampaignSaveStore(localStorage);
+const initialCampaignSave = campaignSaveStore.load();
+const campaignManager = new CampaignManager();
+const campaignWave = new CampaignWaveController();
+let campaignRuntime: CampaignRuntime;
 
 function fillRect(baseX: number, y: number, baseZ: number, width: number, depth: number, blockId: number) {
   for (let x = 0; x < width; x++) {
@@ -415,13 +473,15 @@ const player = new PlayerController(
     if (blockId === 31) { playerStats.eat(5); }
     if (blockId === BLOCK_COOKED_BEEF) { playerStats.eat(8); }
     return true;
-  }
+  },
+  tryAttackMob,
 );
 
 player.position.y = spawnPoint.y;
 player.lookAt(spawnPoint.x + (initialSceneLayout.spawnLookTarget.x - initialSceneLayout.spawn.x), spawnPoint.y + 1, spawnPoint.z + (initialSceneLayout.spawnLookTarget.z - initialSceneLayout.spawn.z));
+player.modeToggleEnabled = false;
 
-// Default to creative mode for new players
+// The menu controls game-mode activation.
 player.survivalMode = false;
 
 // Load saved hotbar or use defaults
@@ -453,6 +513,16 @@ function giveStarterKit() {
   player.inventory.addItem(10, 32);  // 32 planks
   player.inventory.addItem(41, 1);   // wooden pickaxe
   player.inventory.addItem(31, 3);   // 3 raw beef
+}
+
+function giveCampaignStarterKit() {
+  player.inventory.restore({
+    slots: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })),
+    selectedSlot: 0,
+  });
+  player.inventory.addItem(BLOCK_PLANKS, 20);
+  player.inventory.addItem(BLOCK_WOODEN_PICKAXE, 1);
+  player.inventory.addItem(BLOCK_COOKED_BEEF, 2);
 }
 
 // Player stats
@@ -531,6 +601,13 @@ ui.innerHTML = `
   </div>
 `;
 container.appendChild(ui);
+const campaignHud = CampaignHud.mount(ui);
+campaignHud.setActionHandler(() => {
+  if (campaignRuntime?.runReadyAction()) {
+    campaignHud.render(campaignRuntime.getViewModel());
+    document.body.requestPointerLock();
+  }
+});
 
 // Enhanced Start Menu - always visible on start, can be reopened with H key
 let startMenu: HTMLElement | null = null;
@@ -540,13 +617,19 @@ function showStartMenu() {
   if (startMenu) return; // Already visible
   startMenuVisible = true;
   document.exitPointerLock();
+  const campaignSaveMetadata = campaignSaveStore.load() ?? initialCampaignSave;
+  const campaignSaveLabel = campaignSaveMetadata
+    ? campaignSaveMetadata.campaign.currentChapterIndex >= 5
+      ? `继续战役 · 无尽第 ${Math.max(1, campaignSaveMetadata.campaign.endlessWave)} 波`
+      : `继续战役 · 第 ${campaignSaveMetadata.campaign.currentChapterIndex + 1} 章`
+    : '新战役';
   startMenu = document.createElement('div');
   startMenu.className = 'start-menu';
   startMenu.innerHTML = `
     <div class="start-container">
       <div class="start-header">
         <h1>VOXELVERSE</h1>
-        <p>体素沙盒世界 · 创造你的世界</p>
+        <p>建造你的基地，轻松守过每一个夜晚</p>
       </div>
       <div class="start-body">
         <div class="start-tabs">
@@ -557,7 +640,18 @@ function showStartMenu() {
 
         <div class="start-panel active" data-panel="mode">
           <div class="mode-cards">
-            <div class="mode-card selected" data-mode="challenge">
+            <div class="mode-card campaign-card selected" data-mode="campaign">
+              <div class="mode-icon">🏕️</div>
+              <div class="campaign-card-copy">
+                <div class="campaign-card-heading">
+                  <h3>基地战役</h3>
+                  <span class="campaign-save-label">${campaignSaveLabel}</span>
+                </div>
+                <p>持续建造同一座基地，完成五章目标，并在有上限的夜袭中守住成果。</p>
+              </div>
+              ${campaignSaveMetadata ? '<button class="campaign-reset" id="campaign-reset" type="button">重新开始</button>' : ''}
+            </div>
+            <div class="mode-card" data-mode="challenge">
               <div class="mode-icon">🏆</div>
               <h3>闯关模式</h3>
               <p>20关进阶挑战，难度递增</p>
@@ -660,7 +754,7 @@ function showStartMenu() {
             <div class="guide-list">
               <div class="guide-item"><span class="key">G</span> 切换模式</div>
               <div class="guide-item"><span class="key">C</span> 合成界面</div>
-              <div class="guide-item"><span class="key">N</span> 红石粉</div>
+              <div class="guide-item"><span class="key">F</span> 开始战役守夜</div>
               <div class="guide-item"><span class="key">R</span> 重生</div>
             </div>
           </div>
@@ -674,7 +768,7 @@ function showStartMenu() {
   container.appendChild(startMenu);
 
   // State
-  let selectedMode = 'challenge';
+  let selectedMode: GameMode = 'campaign';
   let selectedStartLevel = 0;
 
   // Tab switching
@@ -694,9 +788,30 @@ function showStartMenu() {
     card.addEventListener('click', () => {
       menu.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
-      selectedMode = (card as HTMLElement).dataset.mode || 'tutorial';
+      selectedMode = ((card as HTMLElement).dataset.mode || 'campaign') as GameMode;
     });
   });
+
+  const resetButton = menu.querySelector('#campaign-reset') as HTMLButtonElement | null;
+  if (resetButton) {
+    let resetArmed = false;
+    let resetTimer = 0;
+    resetButton.addEventListener('click', event => {
+      event.stopPropagation();
+      if (!resetArmed) {
+        resetArmed = true;
+        resetButton.textContent = '再次点击确认';
+        window.clearTimeout(resetTimer);
+        resetTimer = window.setTimeout(() => {
+          resetArmed = false;
+          resetButton.textContent = '重新开始';
+        }, 2500);
+        return;
+      }
+      campaignSaveStore.clear();
+      window.location.reload();
+    });
+  }
 
   // Level selection dropdown (for challenge mode)
   const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
@@ -712,22 +827,7 @@ function showStartMenu() {
     startMenuVisible = false;
     startMenu = null;
 
-    // Apply mode
-    if (selectedMode === 'creative') {
-      player.survivalMode = false;
-      levelManager.skip();
-    } else if (selectedMode === 'survival') {
-      player.survivalMode = true;
-      giveStarterKit();
-      levelManager.skip();
-    } else if (selectedMode === 'challenge') {
-      player.survivalMode = false;
-      levelManager.currentLevel = selectedStartLevel;
-      levelManager.skipped = false;
-    }
-
-    setupCreativeUI();
-    updateLevelUI();
+    activateMode(selectedMode, selectedStartLevel);
     document.body.requestPointerLock();
   });
 
@@ -738,6 +838,79 @@ function showStartMenu() {
   sensInput.addEventListener('change', () => {
     localStorage.setItem('voxelverse-sensitivity', sensInput.value);
   });
+}
+
+let freeSurvivalStarterGiven = false;
+let campaignStarted = false;
+
+function activateMode(mode: GameMode, selectedStartLevel = 0) {
+  if (activeMode === 'campaign' && campaignStarted) {
+    campaignRuntime.setActive(false);
+    saveCampaign();
+  } else {
+    campaignRuntime.setActive(false);
+  }
+
+  activeMode = mode;
+  isDead = false;
+  deathScreen.style.display = 'none';
+  playerStats.reset();
+  player.isFlying = false;
+
+  if (mode === 'campaign') {
+    player.survivalMode = true;
+    levelManager.skip();
+    dayNight.setDay();
+
+    const saved = campaignSaveStore.load();
+    if (saved) {
+      campaignManager.restore(saved.campaign);
+      campaignRuntime.restorePendingRewards(saved.pendingRewards);
+      const affected = chunkManager.importMutations(saved.mutations);
+      for (const { cx, cz } of affected) {
+        const chunk = chunkManager.getChunk(cx, cz);
+        if (chunk) vr.rebuildChunkMesh(chunk);
+      }
+      player.inventory.restore(saved.inventory);
+      spawnPoint = { ...saved.spawn };
+      player.respawn(saved.player.x, saved.player.y, saved.player.z);
+    } else {
+      campaignRuntime.restorePendingRewards([]);
+      giveCampaignStarterKit();
+      spawnPoint = {
+        x: initialSceneLayout.spawn.x,
+        y: 10,
+        z: initialSceneLayout.spawn.z,
+      };
+      player.respawn(spawnPoint.x, spawnPoint.y, spawnPoint.z);
+    }
+
+    campaignRuntime.setActive(true);
+    campaignStarted = true;
+    saveCampaign();
+  } else if (mode === 'challenge') {
+    player.survivalMode = false;
+    dayNight.setDay();
+    levelManager.currentLevel = selectedStartLevel;
+    levelManager.skipped = false;
+  } else if (mode === 'creative') {
+    player.survivalMode = false;
+    dayNight.setDay();
+    levelManager.skip();
+  } else {
+    player.survivalMode = true;
+    dayNight.resume();
+    levelManager.skip();
+    if (!freeSurvivalStarterGiven) {
+      giveStarterKit();
+      freeSurvivalStarterGiven = true;
+    }
+  }
+
+  setupCreativeUI();
+  updateLevelUI();
+  updateHotbarUI();
+  campaignHud.render(campaignRuntime.getViewModel());
 }
 
 // Show start menu on init
@@ -752,24 +925,41 @@ document.addEventListener('keydown', (e) => {
 
 // Creative mode UI setup
 function setupCreativeUI() {
+  const survivalUi = activeMode === 'campaign' || activeMode === 'survival';
+  const creativeUi = activeMode === 'challenge' || activeMode === 'creative';
   const statsBars = document.querySelector('.stats-bars') as HTMLElement;
   if (statsBars) {
-    statsBars.style.display = player.survivalMode ? 'flex' : 'none';
+    statsBars.style.display = survivalUi ? 'flex' : 'none';
   }
   if (creativePanel) {
-    creativePanel.style.display = player.survivalMode ? 'none' : (creativePanelVisible ? 'block' : 'none');
+    creativePanel.style.display = creativeUi && creativePanelVisible ? 'block' : 'none';
   }
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) {
-    settingsBtn.style.display = player.survivalMode ? 'none' : 'block';
+    settingsBtn.style.display = creativeUi ? 'block' : 'none';
   }
   const firstStep = document.getElementById('first-step');
   if (firstStep) {
-    firstStep.innerHTML = player.survivalMode
-      ? '<p>生存模式：砍树→拾取→按C合成工具</p>'
-      : '<p>点击下方标签选方块 → 点快捷栏格子切换 → 右键放置</p>';
+    if (activeMode === 'campaign') {
+      firstStep.innerHTML = '<p>基地战役：先按左上目标建造，准备完成后按 F 开始守夜</p>';
+    } else if (activeMode === 'survival') {
+      firstStep.innerHTML = '<p>生存模式：砍树→拾取→按 C 合成工具</p>';
+    } else {
+      firstStep.innerHTML = '<p>点击下方标签选方块 → 点快捷栏格子切换 → 右键放置</p>';
+    }
   }
-  gamemodeLabel.textContent = player.survivalMode ? '生存模式' : '创造模式';
+  gamemodeLabel.textContent = {
+    campaign: '基地战役',
+    challenge: '闯关建造',
+    creative: '自由建造',
+    survival: '自由生存',
+  }[activeMode];
+  const instructions = document.getElementById('instructions');
+  if (instructions) {
+    instructions.textContent = activeMode === 'campaign'
+      ? 'WASD 移动 | 左键攻击/破坏 | 右键放置 | C 合成 | F 开始守夜 | H 菜单'
+      : 'WASD 移动 | 空格跳跃/双击飞行 | 左键破坏 | 右键放置 | G 切换自由模式 | H 菜单';
+  }
 }
 
 // Level system
@@ -812,7 +1002,7 @@ function renderLevelPreview() {
 
 function updateLevelUI() {
   const level = levelManager.current;
-  if (!level || levelManager.isComplete()) {
+  if (activeMode !== 'challenge' || !level || levelManager.isComplete()) {
     levelHud.style.display = 'none';
     levelHint.style.display = 'none';
     levelProgressBars.style.display = 'none';
@@ -992,11 +1182,17 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyG') {
-    if (player.survivalMode) {
-      giveStarterKit();
+    if (activeMode === 'creative') {
+      activateMode('survival');
+    } else if (activeMode === 'survival') {
+      activateMode('creative');
     }
-    setupCreativeUI();
-    updateHotbarUI();
+  }
+
+  if (e.code === 'KeyF' && activeMode === 'campaign' && !isDead) {
+    if (campaignRuntime.runReadyAction()) {
+      campaignHud.render(campaignRuntime.getViewModel());
+    }
   }
 
   if (e.code === 'KeyR' && isDead) {
@@ -1033,7 +1229,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Skip tutorial levels with L
-  if (e.code === 'KeyL' && !isDead && !player.survivalMode) {
+  if (e.code === 'KeyL' && !isDead && activeMode === 'challenge') {
     levelManager.skip();
     updateLevelUI();
   }
@@ -1318,8 +1514,81 @@ const zombies: Zombie[] = [];
 const skeletons: Skeleton[] = [];
 const creepers: Creeper[] = [];
 const cows: Cow[] = [];
+const campaignMobsById = new Map<string, Mob>();
+const campaignIdsByMob = new WeakMap<Mob, string>();
+const attackCooldown = new AttackCooldown();
+let campaignMobSequence = 0;
 let mobSpawnTimer = 0;
 let animalSpawnTimer = 0;
+
+function tryAttackMob(): boolean {
+  if (!player.survivalMode) return false;
+
+  const mobs: Mob[] = [...zombies, ...skeletons, ...creepers, ...cows];
+  const targets = mobs.map((mob, index) => ({
+    id: String(index),
+    x: mob.position.x,
+    y: mob.position.y + 0.9,
+    z: mob.position.z,
+    dead: mob.dead,
+    mob,
+  }));
+  const direction = vr.camera.getWorldDirection(new THREE.Vector3());
+  const target = selectAttackTarget(
+    vr.camera.position,
+    direction,
+    targets,
+  );
+  if (!target) return false;
+  if (!attackCooldown.tryUse(performance.now())) return true;
+
+  const damage = getAttackDamage(player.inventory.getSelectedBlockId());
+  const knockback = getKnockbackDirection(
+    player.position.x,
+    player.position.z,
+    target.mob.position.x,
+    target.mob.position.z,
+  );
+  target.mob.applyHit(damage, knockback.x, knockback.z);
+  return true;
+}
+
+function registerCampaignMob(mob: Mob): string {
+  const id = `campaign-mob-${++campaignMobSequence}`;
+  campaignMobsById.set(id, mob);
+  campaignIdsByMob.set(mob, id);
+  return id;
+}
+
+function recordCampaignMobDeath(mob: Mob) {
+  const id = campaignIdsByMob.get(mob);
+  if (!id) return;
+  campaignRuntime.recordEnemyDeath(id);
+  campaignMobsById.delete(id);
+  campaignIdsByMob.delete(mob);
+}
+
+function removeFromArray<T>(items: T[], item: T) {
+  const index = items.indexOf(item);
+  if (index >= 0) items.splice(index, 1);
+}
+
+function clearCampaignEnemies(ids: string[]) {
+  for (const id of ids) {
+    const mob = campaignMobsById.get(id);
+    if (!mob) continue;
+    campaignMobsById.delete(id);
+    campaignIdsByMob.delete(mob);
+    vr.scene.remove(mob.mesh);
+    if (mob instanceof Zombie) removeFromArray(zombies, mob);
+    if (mob instanceof Skeleton) {
+      for (const arrow of mob.arrows) vr.scene.remove(arrow.mesh);
+      removeFromArray(skeletons, mob);
+    }
+    if (mob instanceof Creeper) removeFromArray(creepers, mob);
+    mob.dispose();
+  }
+}
 
 function findGroundHeight(x: number, z: number): number {
   let y = 30;
@@ -1334,25 +1603,26 @@ function canSpawnMob(x: number, y: number, z: number): boolean {
   return light < 7;
 }
 
-function spawnZombie() {
+function spawnZombie(): Zombie | null {
   const angle = Math.random() * Math.PI * 2;
   const dist = 8 + Math.random() * 8;
   const x = player.position.x + Math.cos(angle) * dist;
   const z = player.position.z + Math.sin(angle) * dist;
   const y = findGroundHeight(x, z);
-  if (!canSpawnMob(x, y, z)) return;
+  if (!canSpawnMob(x, y, z)) return null;
   const zombie = new Zombie(x, y, z);
   zombies.push(zombie);
   vr.scene.add(zombie.mesh);
+  return zombie;
 }
 
-function spawnSkeleton() {
+function spawnSkeleton(): Skeleton | null {
   const angle = Math.random() * Math.PI * 2;
   const dist = 10 + Math.random() * 8;
   const x = player.position.x + Math.cos(angle) * dist;
   const z = player.position.z + Math.sin(angle) * dist;
   const y = findGroundHeight(x, z);
-  if (!canSpawnMob(x, y, z)) return;
+  if (!canSpawnMob(x, y, z)) return null;
   const skeleton = new Skeleton(x, y, z);
   skeletons.push(skeleton);
   vr.scene.add(skeleton.mesh);
@@ -1360,18 +1630,30 @@ function spawnSkeleton() {
   for (const arrow of skeleton.arrows) {
     vr.scene.add(arrow.mesh);
   }
+  return skeleton;
 }
 
-function spawnCreeper() {
+function spawnCreeper(): Creeper | null {
   const angle = Math.random() * Math.PI * 2;
   const dist = 8 + Math.random() * 8;
   const x = player.position.x + Math.cos(angle) * dist;
   const z = player.position.z + Math.sin(angle) * dist;
   const y = findGroundHeight(x, z);
-  if (!canSpawnMob(x, y, z)) return;
+  if (!canSpawnMob(x, y, z)) return null;
   const creeper = new Creeper(x, y, z);
   creepers.push(creeper);
   vr.scene.add(creeper.mesh);
+  return creeper;
+}
+
+function spawnCampaignEnemy(kind: CampaignEnemyKind): string | null {
+  const mob =
+    kind === 'zombie'
+      ? spawnZombie()
+      : kind === 'skeleton'
+        ? spawnSkeleton()
+        : spawnCreeper();
+  return mob ? registerCampaignMob(mob) : null;
 }
 
 function spawnCow() {
@@ -1389,7 +1671,7 @@ function spawnCow() {
   vr.scene.add(cow.mesh);
 }
 
-function explodeCreeper(creeper: Creeper) {
+function explodeCreeper(creeper: Creeper, destroyTerrain = true) {
   // Damage player
   const dist = Math.sqrt(
     (creeper.position.x - player.position.x) ** 2 +
@@ -1400,6 +1682,8 @@ function explodeCreeper(creeper: Creeper) {
     const damage = Math.floor(20 * (1 - dist / 6));
     playerStats.damage(damage);
   }
+
+  if (!destroyTerrain) return;
 
   // Destroy blocks in small radius
   const cx = Math.floor(creeper.position.x);
@@ -1428,11 +1712,42 @@ function explodeCreeper(creeper: Creeper) {
   }
 }
 
+campaignRuntime = new CampaignRuntime(
+  campaignManager,
+  campaignWave,
+  {
+    evaluateObjective: () => {
+      const objective = campaignManager.getCurrentObjective();
+      if (!objective) {
+        return {
+          objectiveCurrent: 1,
+          objectiveTarget: 1,
+          requirementsMet: true,
+        };
+      }
+      return evaluateCampaignObjective(
+        objective,
+        chunkManager,
+        spawnPoint,
+        campaignManager.getChapterStartRevision(),
+      );
+    },
+    getPlacementRevision: () => chunkManager.getPlacementRevision(),
+    addReward: reward => player.inventory.addItem(reward.blockId, reward.count),
+    setDay: () => dayNight.setDay(),
+    setNight: () => dayNight.setNight(),
+    spawnEnemy: spawnCampaignEnemy,
+    clearEnemies: clearCampaignEnemies,
+    requestSave: saveCampaign,
+  },
+);
+campaignHud.render(campaignRuntime.getViewModel());
+
 function updateMobs(dt: number) {
   const totalMobs = zombies.length + skeletons.length + creepers.length;
 
   // Spawn mobs at night, max 8
-  if (dayNight.isNight && totalMobs < 8 && player.survivalMode) {
+  if (dayNight.isNight && totalMobs < 8 && activeMode === 'survival') {
     mobSpawnTimer += dt;
     if (mobSpawnTimer >= 3) {
       mobSpawnTimer -= 3;
@@ -1462,6 +1777,7 @@ function updateMobs(dt: number) {
     }
 
     if (zombie.dead) {
+      recordCampaignMobDeath(zombie);
       vr.scene.remove(zombie.mesh);
       zombie.dispose();
       // Drop rotten flesh
@@ -1510,6 +1826,7 @@ function updateMobs(dt: number) {
     }
 
     if (skeleton.dead) {
+      recordCampaignMobDeath(skeleton);
       vr.scene.remove(skeleton.mesh);
       // Clean up remaining arrows
       for (const arrow of skeleton.arrows) {
@@ -1530,7 +1847,10 @@ function updateMobs(dt: number) {
     );
 
     if (creeper.dead) {
-      explodeCreeper(creeper);
+      recordCampaignMobDeath(creeper);
+      if (creeper.health > 0) {
+        explodeCreeper(creeper, activeMode !== 'campaign');
+      }
       vr.scene.remove(creeper.mesh);
       creeper.dispose();
       creepers.splice(i, 1);
@@ -1538,7 +1858,7 @@ function updateMobs(dt: number) {
   }
 
   // Spawn animals during day
-  if (dayNight.isDay && cows.length < 5 && player.survivalMode) {
+  if (dayNight.isDay && cows.length < 5 && activeMode === 'survival') {
     animalSpawnTimer += dt;
     if (animalSpawnTimer >= 5) {
       animalSpawnTimer -= 5;
@@ -1570,6 +1890,40 @@ function updateMobs(dt: number) {
     }
   }
 }
+
+function buildCampaignSave(): CampaignSaveData {
+  return {
+    version: 1,
+    campaign: campaignManager.snapshot(),
+    pendingRewards: campaignRuntime.getPendingRewards(),
+    inventory: player.inventory.snapshot(),
+    player: {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z,
+    },
+    spawn: { ...spawnPoint },
+    mutations: chunkManager.exportMutations(),
+  };
+}
+
+function saveCampaign() {
+  if (!campaignStarted || activeMode !== 'campaign') return;
+  campaignSaveStore.save(buildCampaignSave());
+}
+
+function showCampaignMessage(text: string) {
+  const message = document.createElement('div');
+  message.className = 'campaign-result-message';
+  message.textContent = text;
+  ui.appendChild(message);
+  window.setTimeout(() => message.classList.add('campaign-result-message--fade'), 900);
+  window.setTimeout(() => message.remove(), 1700);
+}
+
+window.addEventListener('beforeunload', () => {
+  saveCampaign();
+});
 
 // Redstone tick timer (20 tps)
 let redstoneTickAccum = 0;
@@ -1614,13 +1968,26 @@ function loop() {
 
       // Check death
       if (playerStats.isDead) {
-        isDead = true;
-        deathScreen.style.display = 'flex';
-        document.exitPointerLock();
+        if (activeMode === 'campaign') {
+          campaignRuntime.failDefense();
+          playerStats.reset();
+          player.pendingFallDamage = 0;
+          player.respawn(spawnPoint.x, spawnPoint.y, spawnPoint.z);
+          showCampaignMessage('本次守夜未成功，基地和物资都已保留');
+          saveCampaign();
+        } else {
+          isDead = true;
+          deathScreen.style.display = 'flex';
+          document.exitPointerLock();
+        }
       }
     }
 
     player.update(dt);
+
+    if (activeMode === 'campaign') {
+      campaignRuntime.tick(dt);
+    }
 
     furnaceTickAccum += dt;
     while (furnaceTickAccum >= 1) {
@@ -1632,7 +1999,7 @@ function loop() {
     }
 
     // Check tutorial level completion (only in creative mode)
-    if (!player.survivalMode && !levelManager.isComplete() && levelCompletePopup.style.display === 'none') {
+    if (activeMode === 'challenge' && !levelManager.isComplete() && levelCompletePopup.style.display === 'none') {
       const level = levelManager.current;
       if (level && level.getProgress) {
         const progress = level.getProgress(chunkManager, player.position);
@@ -1688,27 +2055,23 @@ function loop() {
   healthFill.style.width = `${(playerStats.health / playerStats.maxHealth) * 100}%`;
   hungerFill.style.width = `${(playerStats.hunger / playerStats.maxHunger) * 100}%`;
   updateHotbarUI();
+  campaignHud.render(campaignRuntime.getViewModel());
 
   // Dynamic chunk loading based on player position
-  const oldChunks = new Set(chunkManager.getAllChunks().map(c => `${c.cx},${c.cz}`));
-  chunkManager.updatePlayerPosition(player.position.x, player.position.z, 8);
-  const newChunks = chunkManager.getAllChunks();
-
-  for (const chunk of newChunks) {
-    const key = `${chunk.cx},${chunk.cz}`;
-    if (!oldChunks.has(key)) {
-      vr.addChunkMesh(chunk);
-    }
+  const chunkDelta = chunkManager.updatePlayerPosition(
+    player.position.x,
+    player.position.z,
+    RENDER_DISTANCE,
+    CHUNK_DATA_LOADS_PER_FRAME,
+  );
+  for (const { cx, cz } of chunkDelta.unloaded) {
+    pendingChunkMeshes.delete(`${cx},${cz}`);
+    vr.removeChunkMesh(cx, cz);
   }
-
-  // Remove distant meshes
-  const currentKeys = new Set(newChunks.map(c => `${c.cx},${c.cz}`));
-  for (const key of oldChunks) {
-    if (!currentKeys.has(key)) {
-      const [cx, cz] = key.split(',').map(Number);
-      vr.removeChunkMesh(cx, cz);
-    }
+  for (const chunk of chunkDelta.loaded) {
+    queueChunkMesh(chunk);
   }
+  processChunkMeshQueue();
 
   vr.render();
 }
@@ -1724,15 +2087,14 @@ if (import.meta.env.DEV) {
     playerStats,
     dayNight,
     placeBlock: (x: number, y: number, z: number, blockId: number) => {
-      chunkManager.setBlock(x, y, z, blockId);
-      chunkManager.markPlayerPlaced(x, y, z);
+      chunkManager.setPlayerBlock(x, y, z, blockId);
       const cx = Math.floor(x / CHUNK_SIZE);
       const cz = Math.floor(z / CHUNK_SIZE);
       const chunk = chunkManager.getChunk(cx, cz);
       if (chunk) vr.rebuildChunkMesh(chunk);
     },
     breakBlock: (x: number, y: number, z: number) => {
-      chunkManager.setBlock(x, y, z, 0);
+      chunkManager.setPlayerBlock(x, y, z, 0);
       const cx = Math.floor(x / CHUNK_SIZE);
       const cz = Math.floor(z / CHUNK_SIZE);
       const chunk = chunkManager.getChunk(cx, cz);
@@ -1746,6 +2108,8 @@ if (import.meta.env.DEV) {
     },
     setSurvivalMode: (v: boolean) => {
       player.survivalMode = v;
+      activeMode = v ? 'survival' : 'creative';
+      campaignRuntime.setActive(false);
       setupCreativeUI();
     },
     setPlayerPos: (x: number, y: number, z: number) => {
@@ -1773,12 +2137,45 @@ if (import.meta.env.DEV) {
       document.querySelector('.welcome-modal')?.remove();
     },
     resetLevels: () => {
+      activeMode = 'challenge';
+      player.survivalMode = false;
+      campaignRuntime.setActive(false);
       levelManager.currentLevel = 0;
       levelManager.skipped = false;
+      setupCreativeUI();
       updateLevelUI();
     },
     updateLevelUI: () => {
       updateLevelUI();
     },
+    getCampaignState: () => ({
+      mode: activeMode,
+      campaign: { ...campaignManager.getViewState() },
+      hud: { ...campaignRuntime.getViewModel() },
+      pendingRewards: campaignRuntime.getPendingRewards(),
+      mutationCount: chunkManager.exportMutations().length,
+    }),
+    startCampaign: () => {
+      startMenu?.remove();
+      startMenu = null;
+      startMenuVisible = false;
+      activateMode('campaign');
+    },
+    runCampaignAction: () => campaignRuntime.runReadyAction(),
+    tickCampaign: (seconds: number) => {
+      campaignRuntime.tick(Math.max(0, seconds));
+      campaignHud.render(campaignRuntime.getViewModel());
+    },
+    getCampaignMobIds: () => Array.from(campaignMobsById.keys()),
+    recordCampaignKill: (id?: string) => {
+      const targetId = id ?? campaignMobsById.keys().next().value;
+      if (typeof targetId !== 'string') return false;
+      campaignRuntime.recordEnemyDeath(targetId);
+      clearCampaignEnemies([targetId]);
+      return true;
+    },
+    failCampaignDefense: () => campaignRuntime.failDefense(),
+    saveCampaign: () => saveCampaign(),
+    clearCampaignSave: () => campaignSaveStore.clear(),
   };
 }
