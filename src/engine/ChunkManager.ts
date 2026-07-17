@@ -1,6 +1,18 @@
 import { WorldGenerator } from './WorldGenerator';
 import { Chunk, CHUNK_SIZE, CHUNK_HEIGHT } from './Chunk';
 
+export interface BlockDeltaEntry {
+  x: number;
+  y: number;
+  z: number;
+  blockId: number;
+}
+
+export interface BlockDeltaSnapshot {
+  placed: BlockDeltaEntry[];
+  removed: Array<{ x: number; y: number; z: number }>;
+}
+
 export class ChunkManager {
   private chunks = new Map<string, Chunk>();
   private generator: WorldGenerator;
@@ -33,6 +45,11 @@ export class ChunkManager {
 
   private key(cx: number, cz: number): string {
     return `${cx},${cz}`;
+  }
+
+  private parseBlockKey(key: string): { x: number; y: number; z: number } {
+    const [x, y, z] = key.split(',').map(Number);
+    return { x, y, z };
   }
 
   getChunk(cx: number, cz: number): Chunk | undefined {
@@ -71,6 +88,39 @@ export class ChunkManager {
       this.playerRemoved.delete(`${wx},${wy},${wz}`);
     } else {
       this.playerRemoved.delete(`${wx},${wy},${wz}`);
+    }
+  }
+
+  getBlockDeltas(): BlockDeltaSnapshot {
+    const placed: BlockDeltaEntry[] = [];
+    for (const key of this.playerPlaced) {
+      const pos = this.parseBlockKey(key);
+      placed.push({ ...pos, blockId: this.getBlock(pos.x, pos.y, pos.z) });
+    }
+
+    const removed = Array.from(this.playerRemoved, (key) => this.parseBlockKey(key));
+    return { placed, removed };
+  }
+
+  applyBlockDeltas(snapshot: BlockDeltaSnapshot) {
+    this.playerPlaced.clear();
+    this.playerRemoved.clear();
+
+    for (const removed of snapshot.removed) {
+      this.ensureChunk(Math.floor(removed.x / CHUNK_SIZE), Math.floor(removed.z / CHUNK_SIZE));
+      this.setBlock(removed.x, removed.y, removed.z, 0);
+      this.markPlayerRemoved(removed.x, removed.y, removed.z);
+    }
+
+    for (const placed of snapshot.placed) {
+      this.setBlock(placed.x, placed.y, placed.z, placed.blockId);
+      this.markPlayerPlaced(placed.x, placed.y, placed.z);
+    }
+  }
+
+  rebuildLoadedChunks(rebuild: (chunk: Chunk) => void) {
+    for (const chunk of this.chunks.values()) {
+      rebuild(chunk);
     }
   }
 

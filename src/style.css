@@ -373,10 +373,11 @@ canvas {
 /* Creative mode categorized hotbar */
 .creative-panel {
   position: absolute;
-  bottom: 64px;
+  bottom: 88px;
   right: 16px;
   left: auto;
   transform: none;
+  width: min(420px, calc(100vw - 32px));
   background: rgba(0, 0, 0, 0.7);
   border-radius: 8px;
   padding: 8px;
@@ -385,6 +386,7 @@ canvas {
 
 .creative-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 8px;
   justify-content: center;
@@ -411,6 +413,7 @@ canvas {
   display: grid;
   grid-template-columns: repeat(8, 40px);
   gap: 4px;
+  justify-content: center;
 }
 
 .creative-cell {
@@ -425,6 +428,165 @@ canvas {
 .creative-cell:hover {
   transform: scale(1.1);
   border-color: rgba(255, 255, 255, 0.6);
+}
+
+.creative-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.creative-tool-btn {
+  min-width: 44px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.creative-tool-btn.active {
+  background: rgba(230, 82, 82, 0.35);
+  border-color: rgba(255, 130, 130, 0.7);
+  color: #fff;
+}
+
+.creative-tool-hint {
+  margin: -2px 0 8px;
+  color: #bfc7d5;
+  font-size: 11px;
+  text-align: right;
+}
+
+.arithmetic-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.arithmetic-header,
+.arithmetic-controls,
+.arithmetic-ops,
+.arithmetic-step-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arithmetic-header {
+  justify-content: space-between;
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.arithmetic-step-count {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.arithmetic-controls {
+  margin-bottom: 8px;
+}
+
+.arithmetic-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ccc;
+  font-size: 12px;
+}
+
+.arithmetic-controls input {
+  width: 64px;
+  height: 26px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: #fff;
+  text-align: center;
+}
+
+.arithmetic-ops {
+  margin-bottom: 8px;
+}
+
+.arithmetic-op,
+.arithmetic-step-controls button {
+  height: 28px;
+  min-width: 32px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.arithmetic-op.active {
+  background: rgba(82, 161, 230, 0.35);
+  border-color: rgba(128, 190, 255, 0.65);
+  color: #fff;
+}
+
+.arithmetic-lanes {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.bit-lane {
+  display: grid;
+  grid-template-columns: 18px 1fr 32px;
+  align-items: center;
+  gap: 6px;
+  color: #ddd;
+  font-size: 11px;
+}
+
+.bit-cells {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(18px, 1fr));
+  gap: 3px;
+}
+
+.bit-cell {
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  color: #d9d9d9;
+}
+
+.bit-cell.active {
+  background: rgba(255, 205, 91, 0.28);
+  border-color: rgba(255, 219, 130, 0.75);
+  color: #fff;
+}
+
+.bit-value {
+  color: #aaa;
+  text-align: right;
+}
+
+.arithmetic-status,
+.arithmetic-step-note {
+  min-height: 18px;
+  color: #ddd;
+  font-size: 12px;
+}
+
+.arithmetic-step-note {
+  color: #aaa;
+  margin-bottom: 8px;
+}
+
+.arithmetic-step-controls {
+  justify-content: flex-end;
 }
 
 /* Hotbar slots with colors */
@@ -928,6 +1090,24 @@ canvas {
   margin-bottom: 8px;
 }
 
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mode-option input {
+  accent-color: #6dbf35;
+}
+
 /* Settings panel */
 .settings-section {
   margin-bottom: 20px;
@@ -972,6 +1152,78 @@ canvas {
   border-radius: 4px;
   color: #fff;
   font-size: 13px;
+}
+
+.save-slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.save-slot-muted {
+  padding: 12px;
+  color: #aaa;
+  background: #2a2a2a;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.save-slot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+
+.save-slot-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.save-slot-meta strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.save-slot-meta span {
+  color: #ccc;
+  font-size: 13px;
+}
+
+.save-slot-meta small {
+  color: #888;
+  font-size: 11px;
+}
+
+.save-slot-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.save-slot-actions button {
+  padding: 6px 10px;
+  background: #3a3a3a;
+  border: 1px solid #5a5a5a;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.save-slot-actions button:hover:not(:disabled) {
+  border-color: #6dbf35;
+}
+
+.save-slot-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /* Guide panel */

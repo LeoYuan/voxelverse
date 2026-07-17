@@ -27,6 +27,16 @@ import { LevelManager, LEVELS } from './tutorial/BuildingLevels';
 import { getLevelPreviewLayout } from './tutorial/levelPreview';
 import { shouldIgnoreSettingsButtonKeyboardActivation } from './player/inputBehavior';
 import { getInitialSceneLayout } from './world/initialSceneLayout';
+import { WorldSaveStore } from './persistence/WorldSaveStore';
+import { WORLD_SAVE_VERSION, type FurnaceSaveState, type WorldSave } from './persistence/WorldSave';
+import { getSharedSoundEffects } from './player/soundEffects';
+import {
+  toBinary8,
+  traceArithmetic,
+  type ArithmeticOperation,
+  type ArithmeticTrace,
+} from './creative/ArithmeticVisualizer';
+import { buildArithmeticComponentLayout } from './creative/ArithmeticComponentBuilder';
 import './style.css';
 
 const container = document.getElementById('app')!;
@@ -41,6 +51,13 @@ const vr = new VoxelRenderer(container);
 
 // Init world
 const chunkManager = new ChunkManager(42);
+const WORLD_SEED = 42;
+const saveStore = new WorldSaveStore();
+let playTimeSeconds = 0;
+const soundEffects = getSharedSoundEffects();
+const LEVEL_PROGRESS_KEY = 'voxelverse-current-level';
+const SOUND_ENABLED_KEY = 'voxelverse-sound-enabled';
+const VOLUME_KEY = 'voxelverse-volume';
 
 // Redstone engine
 const redstoneEngine = new RedstoneEngine();
@@ -455,6 +472,52 @@ function giveStarterKit() {
   player.inventory.addItem(31, 3);   // 3 raw beef
 }
 
+function clearInventory() {
+  for (let i = 0; i < player.inventory.slots.length; i++) {
+    player.inventory.slots[i] = { blockId: 0, count: 0 };
+  }
+  player.inventory.setSelectedSlot(0);
+}
+
+function showToast(message: string) {
+  const msg = document.createElement('div');
+  msg.textContent = message;
+  msg.style.cssText = 'position:fixed;top:40%;left:50%;transform:translateX(-50%);color:#fff;background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:10px 14px;font-size:16px;text-shadow:0 0 4px #000;pointer-events:none;z-index:2000;transition:opacity 0.4s;';
+  document.body.appendChild(msg);
+  setTimeout(() => { msg.style.opacity = '0'; }, 900);
+  setTimeout(() => msg.remove(), 1400);
+}
+
+function getPointerLockHint() {
+  return document.getElementById('pointer-lock-hint') as HTMLElement | null;
+}
+
+function updatePointerLockHint() {
+  const hint = getPointerLockHint();
+  if (!hint) return;
+  hint.style.display = !startMenuVisible && document.pointerLockElement !== document.body ? 'block' : 'none';
+}
+
+function persistLevelProgress() {
+  if (!levelManager.skipped) {
+    localStorage.setItem(LEVEL_PROGRESS_KEY, String(levelManager.currentLevel));
+  }
+}
+
+function readSavedLevelProgress() {
+  const saved = Number(localStorage.getItem(LEVEL_PROGRESS_KEY));
+  if (!Number.isInteger(saved)) return 0;
+  return Math.max(0, Math.min(LEVELS.length - 1, saved));
+}
+
+function applySoundSettings(soundEnabled: boolean, volumePercent: number) {
+  const clampedVolume = Math.max(0, Math.min(100, Math.trunc(volumePercent)));
+  soundEffects.setMuted(!soundEnabled);
+  soundEffects.setVolume(clampedVolume / 100);
+  localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? '1' : '0');
+  localStorage.setItem(VOLUME_KEY, String(clampedVolume));
+}
+
 // Player stats
 const playerStats = new PlayerStats();
 
@@ -475,7 +538,36 @@ ui.innerHTML = `
       <div class="creative-tab" data-cat="tools">工具</div>
       <div class="creative-tab" data-cat="food">食物</div>
     </div>
+    <div class="creative-tools">
+      <button class="creative-tool-btn" id="arithmetic-toggle" type="button">ALU</button>
+    </div>
+    <div class="creative-tool-hint">ALU：8 位四则运算与红石组件生成</div>
     <div class="creative-grid"></div>
+    <div class="arithmetic-panel" id="arithmetic-panel" style="display: none;">
+      <div class="arithmetic-header">
+        <span>8 位四则运算</span>
+        <span class="arithmetic-step-count" id="arithmetic-step-count">0/0</span>
+      </div>
+      <div class="arithmetic-controls">
+        <label>A<input id="arithmetic-input-a" type="number" min="0" max="255" value="200" /></label>
+        <label>B<input id="arithmetic-input-b" type="number" min="0" max="255" value="12" /></label>
+      </div>
+      <div class="arithmetic-ops" role="group" aria-label="operation">
+        <button class="arithmetic-op active" type="button" data-op="add">+</button>
+        <button class="arithmetic-op" type="button" data-op="sub">-</button>
+        <button class="arithmetic-op" type="button" data-op="mul">x</button>
+        <button class="arithmetic-op" type="button" data-op="div">/</button>
+      </div>
+      <div class="arithmetic-lanes" id="arithmetic-lanes"></div>
+      <div class="arithmetic-status" id="arithmetic-status"></div>
+      <div class="arithmetic-step-note" id="arithmetic-step-note"></div>
+      <div class="arithmetic-step-controls">
+        <button id="arithmetic-prev" type="button">上一步</button>
+        <button id="arithmetic-next" type="button">下一步</button>
+        <button id="arithmetic-reset" type="button">重置</button>
+        <button id="arithmetic-build" type="button">生成组件</button>
+      </div>
+    </div>
   </div>
   <div class="hotbar" id="hotbar">
     <div class="slot active" data-idx="0"><div class="slot-color" style="background:#6dbf35"></div><span class="slot-name">草方块</span></div>
@@ -540,6 +632,7 @@ function showStartMenu() {
   if (startMenu) return; // Already visible
   startMenuVisible = true;
   document.exitPointerLock();
+  updatePointerLockHint();
   startMenu = document.createElement('div');
   startMenu.className = 'start-menu';
   startMenu.innerHTML = `
@@ -551,6 +644,7 @@ function showStartMenu() {
       <div class="start-body">
         <div class="start-tabs">
           <div class="start-tab active" data-tab="mode">开始游戏</div>
+          <div class="start-tab" data-tab="saves">存档</div>
           <div class="start-tab" data-tab="settings">设置</div>
           <div class="start-tab" data-tab="guide">游戏说明</div>
         </div>
@@ -596,7 +690,18 @@ function showStartMenu() {
               <div class="mode-icon">⚔️</div>
               <h3>生存挑战</h3>
               <p>采集资源、合成工具、对抗怪物</p>
+              <label class="mode-option">
+                <input type="checkbox" id="survival-starter-kit">
+                <span>带新手包</span>
+              </label>
             </div>
+          </div>
+        </div>
+
+        <div class="start-panel" data-panel="saves">
+          <div class="settings-section">
+            <h4>世界存档</h4>
+            <div id="save-slot-list" class="save-slot-list"></div>
           </div>
         </div>
 
@@ -675,10 +780,16 @@ function showStartMenu() {
 
   // State
   let selectedMode = 'challenge';
-  let selectedStartLevel = 0;
+  let selectedStartLevel = readSavedLevelProgress();
+  let useSurvivalStarterKit = false;
+  const menu = startMenu!;
+  void renderSaveSlots();
+  const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
+  if (levelSelect) {
+    levelSelect.value = String(selectedStartLevel);
+  }
 
   // Tab switching
-  const menu = startMenu!;
   menu.querySelectorAll('.start-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       menu.querySelectorAll('.start-tab').forEach(t => t.classList.remove('active'));
@@ -699,36 +810,38 @@ function showStartMenu() {
   });
 
   // Level selection dropdown (for challenge mode)
-  const levelSelect = menu.querySelector('#level-select') as HTMLSelectElement;
   if (levelSelect) {
     levelSelect.addEventListener('change', () => {
       selectedStartLevel = parseInt(levelSelect.value);
     });
   }
+  const survivalStarterKitInput = menu.querySelector('#survival-starter-kit') as HTMLInputElement | null;
+  survivalStarterKitInput?.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  survivalStarterKitInput?.addEventListener('change', () => {
+    useSurvivalStarterKit = survivalStarterKitInput.checked;
+  });
 
-  // Start button
-  menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
+  function startGameFromMenu(lockPointer: boolean) {
     menu.remove();
     startMenuVisible = false;
     startMenu = null;
+    updatePointerLockHint();
 
-    // Apply mode
-    if (selectedMode === 'creative') {
-      player.survivalMode = false;
-      levelManager.skip();
-    } else if (selectedMode === 'survival') {
-      player.survivalMode = true;
-      giveStarterKit();
-      levelManager.skip();
-    } else if (selectedMode === 'challenge') {
-      player.survivalMode = false;
-      levelManager.currentLevel = selectedStartLevel;
-      levelManager.skipped = false;
-    }
-
+    applyGameMode(selectedMode, selectedStartLevel, useSurvivalStarterKit);
     setupCreativeUI();
     updateLevelUI();
-    document.body.requestPointerLock();
+    if (lockPointer) {
+      void document.body.requestPointerLock().catch(() => {
+        // Browser automation and some documents can reject pointer lock.
+      });
+    }
+  }
+
+  // Start button
+  menu.querySelector('#btn-start-game')!.addEventListener('click', () => {
+    startGameFromMenu(true);
   });
 
   // Settings: save to localStorage
@@ -738,6 +851,96 @@ function showStartMenu() {
   sensInput.addEventListener('change', () => {
     localStorage.setItem('voxelverse-sensitivity', sensInput.value);
   });
+  const soundInput = menu.querySelector('#sound-enabled') as HTMLInputElement;
+  const volumeInput = menu.querySelector('#volume') as HTMLInputElement;
+  soundInput.checked = localStorage.getItem(SOUND_ENABLED_KEY) !== '0';
+  volumeInput.value = localStorage.getItem(VOLUME_KEY) ?? '80';
+  applySoundSettings(soundInput.checked, Number(volumeInput.value));
+  soundInput.addEventListener('change', () => {
+    applySoundSettings(soundInput.checked, Number(volumeInput.value));
+  });
+  volumeInput.addEventListener('input', () => {
+    applySoundSettings(soundInput.checked, Number(volumeInput.value));
+  });
+
+  async function renderSaveSlots() {
+    const list = menu.querySelector('#save-slot-list') as HTMLElement | null;
+    if (!list) return;
+    list.innerHTML = '<div class="save-slot-muted">读取存档中...</div>';
+    const summaries = await saveStore.list();
+    const summaryBySlot = new Map(summaries.map((summary) => [summary.slotId, summary]));
+    list.innerHTML = '';
+
+    for (let i = 1; i <= 3; i++) {
+      const slotId = `slot-${i}`;
+      const summary = summaryBySlot.get(slotId);
+      const row = document.createElement('div');
+      row.className = 'save-slot-row';
+      const updatedText = summary
+        ? new Date(summary.updatedAt).toLocaleString()
+        : '空槽位';
+      row.innerHTML = `
+        <div class="save-slot-meta">
+          <strong>槽位 ${i}</strong>
+          <span>${summary ? summary.name : '未保存世界'}</span>
+          <small>${updatedText}</small>
+        </div>
+        <div class="save-slot-actions">
+          <button data-action="save" data-slot="${slotId}">保存</button>
+          <button data-action="load" data-slot="${slotId}" ${summary ? '' : 'disabled'}>继续</button>
+          <button data-action="delete" data-slot="${slotId}" ${summary ? '' : 'disabled'}>删除</button>
+        </div>
+      `;
+      list.appendChild(row);
+    }
+
+    list.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const target = button as HTMLButtonElement;
+        const slotId = target.dataset.slot!;
+        const action = target.dataset.action;
+        if (action === 'save') {
+          await saveCurrentWorld(slotId);
+          showToast('已保存世界');
+          await renderSaveSlots();
+        } else if (action === 'load') {
+          const save = await saveStore.load(slotId);
+          if (save) {
+            loadWorldSave(save);
+            menu.remove();
+            startMenuVisible = false;
+            startMenu = null;
+            updatePointerLockHint();
+            document.body.requestPointerLock();
+            showToast('已载入世界');
+          }
+        } else if (action === 'delete') {
+          await saveStore.delete(slotId);
+          showToast('已删除存档');
+          await renderSaveSlots();
+        }
+      });
+    });
+  }
+}
+
+function applyGameMode(mode: string, startLevel = 0, survivalStarterKit = false) {
+  if (mode === 'creative') {
+    player.survivalMode = false;
+    levelManager.skip();
+  } else if (mode === 'survival') {
+    player.survivalMode = true;
+    clearInventory();
+    if (survivalStarterKit) {
+      giveStarterKit();
+    }
+    levelManager.skip();
+  } else {
+    player.survivalMode = false;
+    levelManager.currentLevel = startLevel;
+    levelManager.skipped = false;
+    persistLevelProgress();
+  }
 }
 
 // Show start menu on init
@@ -750,6 +953,101 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+function collectFurnaceStates(): FurnaceSaveState[] {
+  return Array.from(furnaceStates.entries(), ([key, state]) => ({
+    key,
+    state: state.snapshot(),
+  }));
+}
+
+async function saveCurrentWorld(slotId = 'slot-1') {
+  const existing = await saveStore.load(slotId);
+  const now = new Date().toISOString();
+  const view = player.getViewState();
+  const save: WorldSave = {
+    version: WORLD_SAVE_VERSION,
+    slotId,
+    name: existing?.name ?? `World ${slotId.replace('slot-', '')}`,
+    seed: WORLD_SEED,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    playTime: playTimeSeconds,
+    player: {
+      position: { x: player.position.x, y: player.position.y, z: player.position.z },
+      velocity: { x: player.velocity.x, y: player.velocity.y, z: player.velocity.z },
+      yaw: view.yaw,
+      pitch: view.pitch,
+      survivalMode: player.survivalMode,
+      isFlying: player.isFlying,
+      selectedSlot: player.inventory.selectedSlot,
+      inventory: player.inventory.slots.map((slot) => ({ ...slot })),
+      health: playerStats.health,
+      hunger: playerStats.hunger,
+      spawnPoint: { ...spawnPoint },
+      toolDurability: player.getToolDurabilitySnapshot(),
+    },
+    time: {
+      timeOfDay: dayNight.timeOfDay,
+      dayCount: dayNight.dayCount,
+      paused: dayNight.isPaused,
+    },
+    level: {
+      currentLevel: levelManager.currentLevel,
+      skipped: levelManager.skipped,
+    },
+    blocks: chunkManager.getBlockDeltas(),
+    redstone: redstoneEngine.snapshot(),
+    furnaces: collectFurnaceStates(),
+  };
+  await saveStore.save(save);
+}
+
+function loadWorldSave(save: WorldSave) {
+  if (save.version !== WORLD_SAVE_VERSION) {
+    showToast('存档版本不兼容');
+    return;
+  }
+
+  chunkManager.applyBlockDeltas(save.blocks);
+  chunkManager.rebuildLoadedChunks((chunk) => vr.rebuildChunkMesh(chunk));
+
+  redstoneEngine.restore(save.redstone);
+  furnaceStates.clear();
+  for (const entry of save.furnaces) {
+    furnaceStates.set(entry.key, new FurnaceState(entry.state));
+  }
+
+  player.position.x = save.player.position.x;
+  player.position.y = save.player.position.y;
+  player.position.z = save.player.position.z;
+  player.velocity.x = save.player.velocity.x;
+  player.velocity.y = save.player.velocity.y;
+  player.velocity.z = save.player.velocity.z;
+  player.survivalMode = save.player.survivalMode;
+  player.isFlying = save.player.isFlying;
+  player.setViewState(save.player.yaw, save.player.pitch);
+  player.inventory.slots = save.player.inventory.map((slot) => ({ ...slot }));
+  player.inventory.setSelectedSlot(save.player.selectedSlot);
+  player.restoreToolDurability(save.player.toolDurability);
+
+  playerStats.health = save.player.health;
+  playerStats.hunger = save.player.hunger;
+  playerStats.isDead = save.player.health <= 0;
+  isDead = playerStats.isDead;
+  deathScreen.style.display = isDead ? 'flex' : 'none';
+
+  spawnPoint = { ...save.player.spawnPoint };
+  dayNight.restore(save.time.timeOfDay, save.time.dayCount, save.time.paused);
+  levelManager.currentLevel = save.level.currentLevel;
+  levelManager.skipped = save.level.skipped;
+  persistLevelProgress();
+  playTimeSeconds = save.playTime;
+
+  setupCreativeUI();
+  updateHotbarUI();
+  updateLevelUI();
+}
+
 // Creative mode UI setup
 function setupCreativeUI() {
   const statsBars = document.querySelector('.stats-bars') as HTMLElement;
@@ -757,11 +1055,14 @@ function setupCreativeUI() {
     statsBars.style.display = player.survivalMode ? 'flex' : 'none';
   }
   if (creativePanel) {
-    creativePanel.style.display = player.survivalMode ? 'none' : (creativePanelVisible ? 'block' : 'none');
+    creativePanel.style.display = creativePanelVisible ? 'block' : 'none';
+  }
+  if (arithmeticPanel) {
+    arithmeticPanel.style.display = arithmeticVisible ? 'block' : 'none';
   }
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) {
-    settingsBtn.style.display = player.survivalMode ? 'none' : 'block';
+    settingsBtn.style.display = 'block';
   }
   const firstStep = document.getElementById('first-step');
   if (firstStep) {
@@ -833,10 +1134,12 @@ function showLevelComplete() {
   levelCompleteText.textContent = `你完成了「${level.title}」！`;
   levelCompletePopup.style.display = 'flex';
   document.exitPointerLock();
+  updatePointerLockHint();
 }
 
 levelNextBtn.addEventListener('click', () => {
   levelManager.nextLevel();
+  persistLevelProgress();
   levelCompletePopup.style.display = 'none';
   updateLevelUI();
   document.body.requestPointerLock();
@@ -852,10 +1155,22 @@ const deathScreen = ui.querySelector('.death-screen') as HTMLElement;
 const hotbarEl = ui.querySelector('#hotbar') as HTMLElement;
 const creativePanel = ui.querySelector('.creative-panel') as HTMLElement;
 const creativeGrid = ui.querySelector('.creative-grid') as HTMLElement;
+const arithmeticToggle = ui.querySelector('#arithmetic-toggle') as HTMLButtonElement;
+const arithmeticPanel = ui.querySelector('#arithmetic-panel') as HTMLElement;
+const arithmeticInputA = ui.querySelector('#arithmetic-input-a') as HTMLInputElement;
+const arithmeticInputB = ui.querySelector('#arithmetic-input-b') as HTMLInputElement;
+const arithmeticLanes = ui.querySelector('#arithmetic-lanes') as HTMLElement;
+const arithmeticStatus = ui.querySelector('#arithmetic-status') as HTMLElement;
+const arithmeticStepNote = ui.querySelector('#arithmetic-step-note') as HTMLElement;
+const arithmeticStepCount = ui.querySelector('#arithmetic-step-count') as HTMLElement;
 
 let isDead = false;
 let creativeTab: BlockCategory = 'natural';
 let creativePanelVisible = false;
+let arithmeticVisible = false;
+let arithmeticOperation: ArithmeticOperation = 'add';
+let arithmeticTrace: ArithmeticTrace = traceArithmetic(arithmeticOperation, 200, 12);
+let arithmeticStepIndex = 0;
 
 // Settings button toggle — bind directly to avoid global click conflicts
 function bindSettingsButton() {
@@ -941,6 +1256,129 @@ function renderCreativeGrid() {
   }
 }
 
+function renderBitLane(label: string, value: number, activeMask = 0): string {
+  const bits = toBinary8(value);
+  const cells = bits
+    .split('')
+    .map((bit, index) => {
+      const bitIndex = 7 - index;
+      const active = ((activeMask >> bitIndex) & 1) === 1 ? ' active' : '';
+      return `<span class="bit-cell${active}">${bit}</span>`;
+    })
+    .join('');
+  return `<div class="bit-lane"><span class="bit-label">${label}</span><div class="bit-cells">${cells}</div><span class="bit-value">${value & 0xff}</span></div>`;
+}
+
+function updateArithmeticTrace(resetStep = true) {
+  arithmeticTrace = traceArithmetic(
+    arithmeticOperation,
+    Number(arithmeticInputA.value),
+    Number(arithmeticInputB.value),
+  );
+  if (resetStep) {
+    arithmeticStepIndex = 0;
+  }
+  arithmeticStepIndex = Math.min(arithmeticStepIndex, Math.max(0, arithmeticTrace.steps.length - 1));
+  renderArithmeticPanel();
+}
+
+function renderArithmeticPanel() {
+  const step = arithmeticTrace.steps[arithmeticStepIndex] ?? arithmeticTrace.steps[0];
+  const activeMask = step?.label.match(/bit (\d+)/)?.[1];
+  const activeBit = activeMask === undefined ? 0 : 1 << Number(activeMask);
+  const partial = step?.partial ?? 0;
+
+  arithmeticLanes.innerHTML = [
+    renderBitLane('A', arithmeticTrace.a, activeBit),
+    renderBitLane('B', arithmeticTrace.b, activeBit),
+    renderBitLane('P', partial, activeBit),
+    renderBitLane('R', step?.result ?? arithmeticTrace.result, activeBit),
+  ].join('');
+
+  const flags = [
+    arithmeticTrace.overflow ? 'overflow' : '',
+    arithmeticTrace.divideByZero ? 'divide-by-zero' : '',
+  ].filter(Boolean);
+  arithmeticStatus.textContent = `结果 ${arithmeticTrace.result} / ${toBinary8(arithmeticTrace.result)}${flags.length > 0 ? ` / ${flags.join(', ')}` : ''}`;
+  arithmeticStepNote.textContent = step ? `${step.label}: ${step.note}` : '';
+  arithmeticStepCount.textContent = `${arithmeticStepIndex + 1}/${arithmeticTrace.steps.length}`;
+
+  ui.querySelectorAll('.arithmetic-op').forEach((button) => {
+    button.classList.toggle('active', (button as HTMLElement).dataset.op === arithmeticOperation);
+  });
+}
+
+function setArithmeticPanelVisible(visible: boolean) {
+  arithmeticVisible = visible;
+  arithmeticPanel.style.display = arithmeticVisible ? 'block' : 'none';
+  arithmeticToggle.classList.toggle('active', arithmeticVisible);
+  if (arithmeticVisible) {
+    renderArithmeticPanel();
+  }
+}
+
+function placeArithmeticComponents() {
+  updateArithmeticTrace(false);
+  const origin = {
+    x: Math.floor(player.position.x) + 3,
+    y: Math.max(2, Math.floor(player.position.y) - 1),
+    z: Math.floor(player.position.z) + 3,
+  };
+  const layout = buildArithmeticComponentLayout(arithmeticTrace, arithmeticOperation, origin);
+  const touchedChunks = new Set<string>();
+
+  for (const block of layout.blocks) {
+    chunkManager.setBlock(block.x, block.y, block.z, block.blockId);
+    chunkManager.markPlayerPlaced(block.x, block.y, block.z);
+    touchedChunks.add(`${Math.floor(block.x / CHUNK_SIZE)},${Math.floor(block.z / CHUNK_SIZE)}`);
+  }
+
+  for (const key of touchedChunks) {
+    const [cx, cz] = key.split(',').map(Number);
+    const chunk = chunkManager.getChunk(cx, cz);
+    if (chunk) {
+      vr.rebuildChunkMesh(chunk);
+    }
+  }
+
+  showToast(`已生成 8 位 ALU 组件：${arithmeticTrace.result} / ${toBinary8(arithmeticTrace.result)}`);
+}
+
+function setupArithmeticUI() {
+  arithmeticToggle.addEventListener('click', () => {
+    setArithmeticPanelVisible(!arithmeticVisible);
+  });
+
+  ui.querySelectorAll('.arithmetic-op').forEach((button) => {
+    button.addEventListener('click', () => {
+      arithmeticOperation = (button as HTMLElement).dataset.op as ArithmeticOperation;
+      updateArithmeticTrace(true);
+    });
+  });
+
+  [arithmeticInputA, arithmeticInputB].forEach((input) => {
+    input.addEventListener('input', () => updateArithmeticTrace(true));
+  });
+
+  document.getElementById('arithmetic-prev')?.addEventListener('click', () => {
+    arithmeticStepIndex = Math.max(0, arithmeticStepIndex - 1);
+    renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-next')?.addEventListener('click', () => {
+    arithmeticStepIndex = Math.min(arithmeticTrace.steps.length - 1, arithmeticStepIndex + 1);
+    renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-reset')?.addEventListener('click', () => {
+    arithmeticStepIndex = 0;
+    renderArithmeticPanel();
+  });
+  document.getElementById('arithmetic-build')?.addEventListener('click', () => {
+    placeArithmeticComponents();
+  });
+
+  updateArithmeticTrace(true);
+}
+
 // Creative tab switching
 ui.querySelectorAll('.creative-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -956,6 +1394,7 @@ ui.querySelectorAll('.creative-tab').forEach(tab => {
 
 // Initial creative grid render
 renderCreativeGrid();
+setupArithmeticUI();
 
 // Click hotbar slots to switch selection
 hotbarEl.querySelectorAll('.slot').forEach(slotEl => {
@@ -992,9 +1431,6 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyG') {
-    if (player.survivalMode) {
-      giveStarterKit();
-    }
     setupCreativeUI();
     updateHotbarUI();
   }
@@ -1093,7 +1529,7 @@ function toggleCraftingUI() {
         <div class="craft-result-slot" id="craft-result"></div>
         <button id="craft-btn">合成</button>
       </div>
-      <p class="craft-hint">点击快捷栏物品放入合成格 | ESC 关闭</p>
+      <p class="craft-hint" id="craft-feedback">点击快捷栏物品放入合成格 | ESC 关闭</p>
     </div>
   `;
   container.appendChild(overlay);
@@ -1121,19 +1557,38 @@ function toggleCraftingUI() {
 
   document.getElementById('craft-btn')!.addEventListener('click', () => {
     const result = Crafting.match(craftingGrid.slice(0, gridCells), craftingGridSize);
-    if (result) {
-      const success = player.inventory.craft({ gridSize: craftingGridSize, inputs: craftingGrid.slice(0, gridCells), output: result.output, count: result.count });
-      if (success) {
-        // Clear crafting grid
-        for (let i = 0; i < gridCells; i++) craftingGrid[i] = 0;
-        updateCraftingPreview();
-        renderCraftingGrid();
-        updateHotbarUI();
-      }
+    if (!result) {
+      setCraftFeedback('没有匹配的配方');
+      return;
+    }
+
+    const recipe = { gridSize: craftingGridSize, inputs: craftingGrid.slice(0, gridCells), output: result.output, count: result.count };
+    if (!player.inventory.canCraft(recipe)) {
+      setCraftFeedback('材料不足');
+      return;
+    }
+    if (!player.inventory.canFit(result.output, result.count)) {
+      setCraftFeedback('背包已满，无法接收产物');
+      return;
+    }
+
+    if (player.inventory.craft(recipe)) {
+      for (let i = 0; i < gridCells; i++) craftingGrid[i] = 0;
+      setCraftFeedback('合成成功');
+      updateCraftingPreview();
+      renderCraftingGrid();
+      updateHotbarUI();
     }
   });
 
   updateCraftingPreview();
+}
+
+function setCraftFeedback(message: string) {
+  const feedback = document.getElementById('craft-feedback');
+  if (feedback) {
+    feedback.textContent = message;
+  }
 }
 
 function renderCraftingGrid() {
@@ -1257,6 +1712,10 @@ function placeSelectedInFurnaceSlot(slotType: 'input' | 'fuel') {
   const snapshot = state.snapshot();
 
   if (slotType === 'input') {
+    if (!FurnaceRegistry.getRecipe(selected.blockId)) {
+      showToast('这个物品不能熔炼');
+      return;
+    }
     if (snapshot.inputId !== 0 && snapshot.inputId !== selected.blockId) return;
     state.setInput(selected.blockId, snapshot.inputCount + 1);
   } else {
@@ -1274,6 +1733,12 @@ function takeFurnaceOutput() {
   if (!activeFurnaceKey) return;
   const state = furnaceStates.get(activeFurnaceKey);
   if (!state) return;
+  const snapshot = state.snapshot();
+  if (snapshot.outputId === 0 || snapshot.outputCount <= 0) return;
+  if (!player.inventory.canFit(snapshot.outputId, snapshot.outputCount)) {
+    showToast('背包已满，无法取出产物');
+    return;
+  }
   const output = state.takeOutput();
   if (!output) return;
   const overflow = player.inventory.addItem(output.itemId, output.count);
@@ -1584,6 +2049,7 @@ function loop() {
   const now = performance.now();
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
+  playTimeSeconds += dt;
 
   // Update day/night cycle (accelerated: 2 minutes per day)
   dayNight.update(dt * 10);
@@ -1748,6 +2214,20 @@ if (import.meta.env.DEV) {
       player.survivalMode = v;
       setupCreativeUI();
     },
+    inventorySummary: () => player.inventory.slots.map((slot) => ({ ...slot })),
+    startMode: (mode: 'challenge' | 'creative' | 'survival', starterKit = false) => {
+      document.querySelector('.start-menu')?.remove();
+      startMenuVisible = false;
+      startMenu = null;
+      applyGameMode(mode, 0, starterKit);
+      setupCreativeUI();
+      updateLevelUI();
+      updateHotbarUI();
+    },
+    openCrafting: () => {
+      if (!craftingOpen) toggleCraftingUI();
+    },
+    craftingFeedback: () => document.getElementById('craft-feedback')?.textContent ?? '',
     setPlayerPos: (x: number, y: number, z: number) => {
       player.position.x = x;
       player.position.y = y;
@@ -1775,10 +2255,34 @@ if (import.meta.env.DEV) {
     resetLevels: () => {
       levelManager.currentLevel = 0;
       levelManager.skipped = false;
+      persistLevelProgress();
       updateLevelUI();
     },
     updateLevelUI: () => {
       updateLevelUI();
     },
+    setArithmeticInputs: (a: number, b: number) => {
+      arithmeticInputA.value = String(a);
+      arithmeticInputB.value = String(b);
+      updateArithmeticTrace(true);
+    },
+    setArithmeticOperation: (operation: ArithmeticOperation) => {
+      arithmeticOperation = operation;
+      updateArithmeticTrace(true);
+    },
+    setArithmeticStep: (index: number) => {
+      arithmeticStepIndex = Math.max(0, Math.min(arithmeticTrace.steps.length - 1, Math.trunc(index)));
+      renderArithmeticPanel();
+    },
+    buildArithmeticComponents: () => {
+      placeArithmeticComponents();
+    },
+    getArithmeticTraceState: () => ({
+      trace: arithmeticTrace,
+      stepIndex: arithmeticStepIndex,
+      status: arithmeticStatus.textContent ?? '',
+      note: arithmeticStepNote.textContent ?? '',
+      lanes: arithmeticLanes.textContent ?? '',
+    }),
   };
 }

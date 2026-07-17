@@ -88,6 +88,12 @@ export const BLOCK_LEVER = 36;
 export const BLOCK_BUTTON = 37;
 export const BLOCK_REDSTONE_BLOCK = 38;
 export const BLOCK_REPEATER = 39;
+export const BLOCK_ALU_INPUT_OFF = 51;
+export const BLOCK_ALU_INPUT_ON = 52;
+export const BLOCK_ALU_OUTPUT_OFF = 53;
+export const BLOCK_ALU_OUTPUT_ON = 54;
+export const BLOCK_ALU_SELECTOR = 55;
+export const BLOCK_ALU_CONTROLLER = 56;
 
 // Tools
 export const BLOCK_STICK = 40;
@@ -158,6 +164,12 @@ const BLOCKS: BlockDefinition[] = [
   { id: BLOCK_BUTTON, key: 'button', name: '按钮', color: 0x8b7355, hardness: 0.5, transparent: true, solid: false, category: 'redstone' },
   { id: BLOCK_REDSTONE_BLOCK, key: 'redstone_block', name: '红石块', color: 0xcc0000, hardness: 5, transparent: false, solid: true, category: 'redstone' },
   { id: BLOCK_REPEATER, key: 'repeater', name: '红石中继器', color: 0x8b7355, hardness: 0.5, transparent: true, solid: false, category: 'redstone' },
+  { id: BLOCK_ALU_INPUT_OFF, key: 'alu_input_off', name: 'ALU输入0', color: 0x1f2933, hardness: 0.5, transparent: false, solid: true, category: 'redstone' },
+  { id: BLOCK_ALU_INPUT_ON, key: 'alu_input_on', name: 'ALU输入1', color: 0x2dd4bf, hardness: 0.5, transparent: false, solid: true, lightLevel: 7, category: 'redstone' },
+  { id: BLOCK_ALU_OUTPUT_OFF, key: 'alu_output_off', name: 'ALU输出0', color: 0x28313a, hardness: 0.5, transparent: false, solid: true, category: 'redstone' },
+  { id: BLOCK_ALU_OUTPUT_ON, key: 'alu_output_on', name: 'ALU输出1', color: 0xfacc15, hardness: 0.5, transparent: false, solid: true, lightLevel: 10, category: 'redstone' },
+  { id: BLOCK_ALU_SELECTOR, key: 'alu_selector', name: 'ALU运算选择', color: 0x60a5fa, hardness: 0.5, transparent: false, solid: true, lightLevel: 6, category: 'redstone' },
+  { id: BLOCK_ALU_CONTROLLER, key: 'alu_controller', name: 'ALU控制器', color: 0x475569, hardness: 0.5, transparent: false, solid: true, category: 'redstone' },
 
   // Tools
   { id: BLOCK_STICK, key: 'stick', name: '木棍', color: 0x8b6914, hardness: 0, transparent: true, solid: false, category: 'tools' },

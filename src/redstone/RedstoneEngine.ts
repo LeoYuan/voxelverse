@@ -13,6 +13,12 @@ export interface RedstoneComponent {
   delay?: number;
 }
 
+export interface RedstoneEngineSnapshot {
+  components: RedstoneComponent[];
+  power: Array<[string, number]>;
+  repeaterQueues: Array<[string, number[]]>;
+}
+
 export class RedstoneEngine {
   // Current tick power levels (0-15)
   private power = new Map<string, number>();
@@ -228,6 +234,25 @@ export class RedstoneEngine {
 
   getAllComponents(): RedstoneComponent[] {
     return Array.from(this.components.values());
+  }
+
+  snapshot(): RedstoneEngineSnapshot {
+    return {
+      components: this.getAllComponents().map((component) => ({ ...component })),
+      power: Array.from(this.power.entries()),
+      repeaterQueues: Array.from(this.repeaterQueues.entries(), ([key, queue]) => [key, [...queue]]),
+    };
+  }
+
+  restore(snapshot: RedstoneEngineSnapshot) {
+    this.clear();
+    for (const component of snapshot.components) {
+      this.registerComponent({ ...component });
+    }
+    this.power = new Map(snapshot.power);
+    this.repeaterQueues = new Map(
+      snapshot.repeaterQueues.map(([key, queue]) => [key, [...queue]]),
+    );
   }
 
   clear() {

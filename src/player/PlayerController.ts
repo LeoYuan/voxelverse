@@ -147,13 +147,14 @@ export class PlayerController {
       this.isPointerLocked = document.pointerLockElement === document.body;
       const hint = document.getElementById('pointer-lock-hint');
       if (hint) {
-        hint.style.display = this.isPointerLocked ? 'none' : 'block';
+        const startMenuVisible = Boolean(document.querySelector('.start-menu'));
+        hint.style.display = !startMenuVisible && !this.isPointerLocked ? 'block' : 'none';
       }
     });
 
     // Press Enter to enter pointer lock (instead of clicking)
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Enter' && !this.isPointerLocked) {
+      if (e.code === 'Enter' && !this.isPointerLocked && !document.querySelector('.start-menu')) {
         document.body.requestPointerLock();
       }
     });
@@ -796,6 +797,23 @@ export class PlayerController {
       -Math.PI / 2 + 0.01,
       Math.min(Math.PI / 2 - 0.01, -Math.atan2(dy, Math.max(horizontalDistance, 0.001))),
     );
+  }
+
+  getViewState(): { yaw: number; pitch: number } {
+    return { yaw: this.yaw, pitch: this.pitch };
+  }
+
+  setViewState(yaw: number, pitch: number) {
+    this.yaw = yaw;
+    this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+  }
+
+  getToolDurabilitySnapshot(): Array<[number, number]> {
+    return Array.from(this.toolDurability.entries());
+  }
+
+  restoreToolDurability(snapshot: Array<[number, number]>) {
+    this.toolDurability = new Map(snapshot);
   }
 
   private triggerArmSwing() {
