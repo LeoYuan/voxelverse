@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Creative Mode Flight', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.waitForFunction(() => Boolean((window as any).__voxelverse_test));
     await page.evaluate(() => {
       const w = (window as any).__voxelverse_test;
       w.skipWelcome();
@@ -10,7 +11,6 @@ test.describe('Creative Mode Flight', () => {
       w.setFlying(false);
       w.setPlayerPos(0, 20, 0);
     });
-    await page.waitForTimeout(500);
   });
 
   test('should start with gravity in creative mode', async ({ page }) => {

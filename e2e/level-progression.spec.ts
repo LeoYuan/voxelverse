@@ -3,14 +3,13 @@ import { test, expect } from '@playwright/test';
 test.describe('Tutorial Level Progression', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await page.waitForFunction(() => Boolean((window as any).__voxelverse_test));
     // Skip welcome modal and ensure fresh level state
     await page.evaluate(() => {
       const w = (window as any).__voxelverse_test;
       w.skipWelcome();
       w.resetLevels();
     });
-    // Wait for world to load
-    await page.waitForTimeout(500);
   });
 
   test('Level 1: should complete after placing a player-placed block', async ({ page }) => {
@@ -105,21 +104,21 @@ test.describe('Tutorial Level Progression', () => {
     const title = await page.evaluate(() => (window as any).__voxelverse_test.getLevelTitle());
     expect(title).toBe('小房子');
 
-    // Build 4x4 floor + walls
+    // Build the current 3x3 floor + seven-wall shelter target
     await page.evaluate(() => {
       const w = (window as any).__voxelverse_test;
-      for (let x = 0; x < 4; x++) {
-        for (let z = 0; z < 4; z++) {
+      for (let x = 0; x < 3; x++) {
+        for (let z = 0; z < 3; z++) {
           w.placeBlock(x, 18, z, 10); // planks
         }
       }
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          if (i === 0 || i === 3 || j === 0 || j === 3) {
-            w.placeBlock(i, 19, j, 10);
-            w.placeBlock(i, 20, j, 10);
-          }
-        }
+      const walls = [
+        [0, 0], [2, 0],
+        [0, 1], [2, 1],
+        [0, 2], [1, 2], [2, 2],
+      ];
+      for (const [x, z] of walls) {
+        w.placeBlock(x, 19, z, 10);
       }
       w.setPlayerPos(5, 20, 5);
     });
@@ -130,7 +129,7 @@ test.describe('Tutorial Level Progression', () => {
     expect(complete).toBe(true);
   });
 
-  test('should progress through all levels', async ({ page }) => {
+  test('should progress through the first four levels', async ({ page }) => {
     // Use direct API calls to avoid pointer-lock popup interactions
     const results = await page.evaluate(() => {
       const w = (window as any).__voxelverse_test;
@@ -164,31 +163,39 @@ test.describe('Tutorial Level Progression', () => {
       w.levelManager.nextLevel();
 
       // Level 4
-      for (let x = 0; x < 4; x++) {
-        for (let z = 0; z < 4; z++) {
+      for (let x = 0; x < 3; x++) {
+        for (let z = 0; z < 3; z++) {
           w.placeBlock(x, 18, z, 10);
         }
       }
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          if (i === 0 || i === 3 || j === 0 || j === 3) {
-            w.placeBlock(i, 19, j, 10);
-            w.placeBlock(i, 20, j, 10);
-          }
-        }
+      const walls = [
+        [0, 0], [2, 0],
+        [0, 1], [2, 1],
+        [0, 2], [1, 2], [2, 2],
+      ];
+      for (const [x, z] of walls) {
+        w.placeBlock(x, 19, z, 10);
       }
       w.setPlayerPos(5, 20, 5);
       const lvl4 = w.levelManager.check(w.chunkManager, w.player.position);
 
       w.levelManager.nextLevel();
 
-      return { lvl1, lvl2, lvl3, lvl4, complete: w.levelManager.isComplete() };
+      return {
+        lvl1,
+        lvl2,
+        lvl3,
+        lvl4,
+        currentLevel: w.levelManager.currentLevel,
+        complete: w.levelManager.isComplete(),
+      };
     });
 
     expect(results.lvl1).toBe(true);
     expect(results.lvl2).toBe(true);
     expect(results.lvl3).toBe(true);
     expect(results.lvl4).toBe(true);
-    expect(results.complete).toBe(true);
+    expect(results.currentLevel).toBe(4);
+    expect(results.complete).toBe(false);
   });
 });
